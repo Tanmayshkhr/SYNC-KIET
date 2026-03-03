@@ -31,7 +31,7 @@ Respond ONLY with a JSON object, no markdown, no explanation:
     "students": ["list of student names to group"]
 }}"""
 
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
         raw = response.text.strip()
         clean = raw.replace("```json", "").replace("```", "").strip()
         return json.loads(clean)
@@ -75,7 +75,7 @@ Respond ONLY with a JSON object, no markdown, no explanation:
     "students": ["list of student names to group"]
 }}"""
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     raw = response.text.strip()
     clean = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(clean)
@@ -93,7 +93,7 @@ Respond ONLY with a JSON object, no markdown:
     "estimated_complexity": "easy/medium/hard"
 }}"""
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     raw = response.text.strip()
     clean = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(clean)
@@ -111,7 +111,7 @@ Respond ONLY with a JSON object, no markdown:
     "reason": "why this slot is best"
 }}"""
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     raw = response.text.strip()
     clean = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(clean)
