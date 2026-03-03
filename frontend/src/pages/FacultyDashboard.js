@@ -9,6 +9,8 @@ export default function FacultyDashboard({ user, setUser }) {
   const [timer, setTimer] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState("dashboard");
+  const [messagePopup, setMessagePopup] = useState(null);
+  const [customMessage, setCustomMessage] = useState("");
 
   const sendNotification = (title, body) => {
     if ("Notification" in window && Notification.permission === "granted") {
@@ -68,13 +70,24 @@ export default function FacultyDashboard({ user, setUser }) {
     setLoading(false);
   };
 
-  const acceptDoubt = async (doubt) => {
+  const acceptDoubt = async (doubt, groupDoubts = null) => {
     try {
-      await fetch(`${API}/doubts/accept/${doubt._id}`, {
-        method: "PUT",
-        headers: { authorization: `Bearer ${user.token}` }
-      });
-      setActiveSession(doubt);
+      if (groupDoubts && groupDoubts.length > 1) {
+        // Accept all doubts in the group at once
+        await Promise.all(groupDoubts.map(d =>
+          fetch(`${API}/doubts/accept/${d._id}`, {
+            method: "PUT",
+            headers: { authorization: `Bearer ${user.token}` }
+          })
+        ));
+        setActiveSession({ ...doubt, groupDoubts, isGroup: true });
+      } else {
+        await fetch(`${API}/doubts/accept/${doubt._id}`, {
+          method: "PUT",
+          headers: { authorization: `Bearer ${user.token}` }
+        });
+        setActiveSession(doubt);
+      }
       fetchQueue();
     } catch (err) {
       console.error(err);
@@ -107,6 +120,34 @@ const rejectDoubt = async (doubt) => {
       setTimeout(() => fetchQueue(), 500);
     } catch (err) {
       console.error("Reject error:", err);
+    }
+  };
+
+  const QUICK_MESSAGES = [
+    "Come in 5 minutes",
+    "Come in 10 minutes",
+    "Come in 15 minutes",
+    "Please wait, finishing current session",
+    "Your doubt needs more detail, please describe better",
+    "Grouping you with others, arrive in 5 mins",
+    "Group session starting in 10 minutes",
+  ];
+
+  const sendMessage = async (doubtId, message) => {
+    try {
+      await fetch(`${API}/doubts/send-message/${doubtId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${user.token}`
+        },
+        body: JSON.stringify({ message })
+      });
+      setMessagePopup(null);
+      setCustomMessage("");
+      alert("Message sent to student!");
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -161,7 +202,18 @@ const rejectDoubt = async (doubt) => {
                 {activeSession ? (
                   <>
                     <div style={{ background: "#f0f4f8", borderRadius: 10, padding: 16, marginBottom: 16 }}>
-                      <div style={{ fontWeight: 700, color: "#1a1a1a", marginBottom: 4 }}>{activeSession.student_name}</div>
+                      {activeSession.isGroup ? (
+                        <>
+                          <div style={{ fontWeight: 700, color: BLUE, marginBottom: 6 }}>🤝 Group Session</div>
+                          {activeSession.groupDoubts.map(gd => (
+                            <div key={gd._id} style={{ fontSize: 13, color: "#444", background: "#eff6ff", borderRadius: 6, padding: "4px 10px", marginBottom: 4 }}>
+                              👤 {gd.student_name}
+                            </div>
+                          ))}
+                        </>
+                      ) : (
+                        <div style={{ fontWeight: 700, color: "#1a1a1a", marginBottom: 4 }}>{activeSession.student_name}</div>
+                      )}
                       <div style={{ fontSize: 13, color: "#666", marginBottom: 4 }}>{activeSession.topic}</div>
                       <div style={{ fontSize: 12, color: "#888" }}>{activeSession.subject}</div>
                       <div style={{ fontSize: 12, color: "#888", marginTop: 8 }}>{activeSession.description}</div>
@@ -203,42 +255,104 @@ const rejectDoubt = async (doubt) => {
                   <div style={{ textAlign: "center", padding: 40, color: "#999" }}>No students in queue</div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 400, overflowY: "auto" }}>
-                    {queue.map((d, i) => (
-                      <div key={d._id} style={{
-  border: d.priority === "urgent" ? "2px solid #ef4444" : "1px solid #e0e0e0",
-  background: d.priority === "urgent" ? "#fff5f5" : "#fff",
-  borderRadius: 10, padding: 14
-}}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-  <div style={{ fontWeight: 700, color: "#1a1a1a", fontSize: 14 }}>
-    #{i + 1} {d.student_name}
-  </div>
-  {d.priority === "urgent" && (
-    <span style={{ fontSize: 10, padding: "2px 8px", background: "#fee2e2", color: "#ef4444", borderRadius: 10, fontWeight: 700 }}>
-      URGENT
-    </span>
-  )}
+                    {/* Group clustered doubts */}
+                    {(() => {
+                      const groups = {};
+                      const singles = [];
+                      queue.forEach(d => {
+                        if (d.grouped && d.cluster_id) {
+                          if (!groups[d.cluster_id]) groups[d.cluster_id] = [];
+                          groups[d.cluster_id].push(d);
+                        } else {
+                          singles.push(d);
+                        }
+                      });
+
+                      return (
+                        <>
+                          {/* Grouped sessions */}
+                          {Object.entries(groups).map(([clusterId, groupDoubts]) => (
+                            <div key={clusterId} style={{
+                              border: "2px solid #1a73e8",
+                              background: "#eff6ff",
+                              borderRadius: 10, padding: 14, marginBottom: 10
+                            }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                                <span style={{ fontSize: 16 }}>🤝</span>
+                                <span style={{ fontWeight: 700, color: BLUE, fontSize: 14 }}>GROUP SESSION</span>
+                                <span style={{ fontSize: 11, padding: "2px 8px", background: "#bfdbfe", color: BLUE, borderRadius: 10, fontWeight: 700 }}>
+                                  {groupDoubts.length} students
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a", marginBottom: 6 }}>
+                                {groupDoubts[0].topic} · {groupDoubts[0].subject}
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+                                {groupDoubts.map((gd, gi) => (
+                                  <div key={gd._id} style={{ fontSize: 12, color: "#444", background: "#fff", borderRadius: 6, padding: "6px 10px" }}>
+                                    👤 {gd.student_name}
+                                  </div>
+                                ))}
+                              </div>
+                              {!activeSession && (
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <button onClick={() => acceptDoubt(groupDoubts[0], groupDoubts)}
+                                    style={{ flex: 1, padding: "8px 0", background: BLUE, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
+                                    Accept Group Session
+                                  </button>
+                                  <button onClick={() => rejectDoubt(groupDoubts[0])}
+                                    style={{ padding: "8px 12px", background: "#fee2e2", color: "#ef4444", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
+                                    Reject
+                                  </button>
+                                </div>
+                              )}
                             </div>
-                            <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{d.topic}</div>
-                            <div style={{ fontSize: 11, color: "#888" }}>{d.subject}</div>
-                          </div>
-                        </div>
-                        {!activeSession && (
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button onClick={() => acceptDoubt(d)}
-                              style={{ flex: 1, padding: "8px 0", background: d.priority === "urgent" ? "#ef4444" : BLUE, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
-                              {d.priority === "urgent" ? "Accept (Priority)" : "Accept"}
-                            </button>
-                            <button onClick={() => rejectDoubt(d)}
-                              style={{ padding: "8px 12px", background: "#fee2e2", color: "#ef4444", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
-                              Reject
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                          ))}
+
+                          {/* Single doubts */}
+                          {singles.map((d, i) => (
+                            <div key={d._id} style={{
+                              border: d.priority === "urgent" ? "2px solid #ef4444" : "1px solid #e0e0e0",
+                              background: d.priority === "urgent" ? "#fff5f5" : "#fff",
+                              borderRadius: 10, padding: 14, marginBottom: 10
+                            }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                                <div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <div style={{ fontWeight: 700, color: "#1a1a1a", fontSize: 14 }}>
+                                      #{i + 1} {d.student_name}
+                                    </div>
+                                    {d.priority === "urgent" && (
+                                      <span style={{ fontSize: 10, padding: "2px 8px", background: "#fee2e2", color: "#ef4444", borderRadius: 10, fontWeight: 700 }}>
+                                        URGENT
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{d.topic}</div>
+                                  <div style={{ fontSize: 11, color: "#888" }}>{d.subject}</div>
+                                </div>
+                              </div>
+                              {!activeSession && (
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <button onClick={() => setMessagePopup(d)}
+                                    style={{ padding: "8px 12px", background: "#f0f4f8", color: "#444", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
+                                    💬
+                                  </button>
+                                  <button onClick={() => acceptDoubt(d)}
+                                    style={{ flex: 1, padding: "8px 0", background: d.priority === "urgent" ? "#ef4444" : BLUE, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
+                                    {d.priority === "urgent" ? "Accept (Priority)" : "Accept"}
+                                  </button>
+                                  <button onClick={() => rejectDoubt(d)}
+                                    style={{ padding: "8px 12px", background: "#fee2e2", color: "#ef4444", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
+                                    Reject
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -262,6 +376,45 @@ const rejectDoubt = async (doubt) => {
           </div>
         )}
       </div>
+
+      {/* Message Popup */}
+      {messagePopup && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 420, boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>💬 Send Message</div>
+            <div style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>To: {messagePopup.student_name}</div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+              {QUICK_MESSAGES.map((msg, i) => (
+                <button key={i} onClick={() => sendMessage(messagePopup._id, msg)}
+                  style={{ padding: "10px 14px", background: "#f0f4f8", border: "1px solid #e0e0e0", borderRadius: 8, textAlign: "left", cursor: "pointer", fontSize: 13, color: "#1a1a1a", fontWeight: 500 }}>
+                  {msg}
+                </button>
+              ))}
+            </div>
+
+            <input
+              placeholder="Or type custom message..."
+              value={customMessage}
+              onChange={e => setCustomMessage(e.target.value)}
+              style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1.5px solid #e0e0e0", fontSize: 13, outline: "none", boxSizing: "border-box", marginBottom: 12 }}
+            />
+
+            <div style={{ display: "flex", gap: 10 }}>
+              {customMessage && (
+                <button onClick={() => sendMessage(messagePopup._id, customMessage)}
+                  style={{ flex: 1, padding: "11px 0", background: BLUE, color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}>
+                  Send
+                </button>
+              )}
+              <button onClick={() => { setMessagePopup(null); setCustomMessage(""); }}
+                style={{ flex: 1, padding: "11px 0", background: "#f0f4f8", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", color: "#666" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

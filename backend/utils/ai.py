@@ -1,8 +1,10 @@
-from google import genai
+import google.generativeai as genai
 import os
 import json
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel("gemini-2.0-flash")
+
 def cluster_doubts(doubts: list):
     if len(doubts) < 2:
         return {
@@ -31,7 +33,10 @@ Respond ONLY with a JSON object, no markdown, no explanation:
     "students": ["list of student names to group"]
 }}"""
 
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        response = model.generate_content(
+            prompt,
+            request_options={"timeout": 5}
+        )
         raw = response.text.strip()
         clean = raw.replace("```json", "").replace("```", "").strip()
         return json.loads(clean)
@@ -39,8 +44,32 @@ Respond ONLY with a JSON object, no markdown, no explanation:
     except Exception:
         # Smart keyword-based fallback when AI quota exceeded
         topics = [d["topic"].lower() for d in doubts]
-        keywords = ["bst", "binary", "tree", "sort", "linked", "graph", "stack", "queue"]
-        matched = [k for k in keywords if any(k in t for t in topics)]
+
+        subject_keywords = {
+            "daa": ["bst", "binary", "tree", "sort", "linked", "graph", "stack", "queue",
+                    "algorithm", "dynamic", "greedy", "recursion", "knapsack", "dijkstra",
+                    "prims", "kruskal", "complexity", "np", "hashing", "heap"],
+            "ml": ["supervised", "unsupervised", "learning", "neural", "network", "regression",
+                   "classification", "clustering", "knn", "svm", "decision", "random", "forest",
+                   "gradient", "backpropagation", "cnn", "rnn", "lstm", "perceptron", "dropout"],
+            "cn": ["routing", "protocol", "tcp", "ip", "http", "dns", "subnet", "osi",
+                   "ethernet", "wifi", "switching", "congestion", "udp", "firewall", "nat"],
+            "web": ["css", "html", "react", "node", "express", "mongodb", "api", "rest",
+                    "hooks", "usestate", "useeffect", "redux", "flask", "django", "javascript"],
+            "da": ["pandas", "numpy", "visualization", "matplotlib", "seaborn", "preprocessing",
+                   "cleaning", "outlier", "feature", "pca", "hypothesis", "regression", "pivot"],
+            "uhv": ["values", "harmony", "ethics", "society", "nature", "family", "conduct"],
+            "aptitude": ["percentage", "profit", "loss", "time", "speed", "distance", "ratio",
+                         "probability", "permutation", "combination", "reasoning"],
+            "soft": ["communication", "interview", "resume", "presentation", "leadership", "email"]
+        }
+
+        all_keywords = []
+        for kws in subject_keywords.values():
+            all_keywords.extend(kws)
+
+        matched = [k for k in all_keywords if any(k in t for t in topics)]
+
         if matched:
             return {
                 "grouped": True,
@@ -55,30 +84,6 @@ Respond ONLY with a JSON object, no markdown, no explanation:
             "cluster_name": "",
             "students": []
         }
-        
-    doubt_list = [
-        f"Student: {d['student_name']}, Topic: {d['topic']}, Description: {d['description']}"
-        for d in doubts
-    ]
-    doubt_text = "\n".join(doubt_list)
-
-    prompt = f"""Analyze these student doubts and check if they are similar enough to group into one session.
-
-{doubt_text}
-
-Respond ONLY with a JSON object, no markdown, no explanation:
-{{
-    "grouped": true or false,
-    "similarity_score": 0-100,
-    "cluster_name": "name of the common topic",
-    "recommendation": "one sentence recommendation",
-    "students": ["list of student names to group"]
-}}"""
-
-    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-    raw = response.text.strip()
-    clean = raw.replace("```json", "").replace("```", "").strip()
-    return json.loads(clean)
 
 
 def get_doubt_hint(subject: str, topic: str, description: str):
@@ -93,7 +98,10 @@ Respond ONLY with a JSON object, no markdown:
     "estimated_complexity": "easy/medium/hard"
 }}"""
 
-    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+    response = model.generate_content(
+        prompt,
+        request_options={"timeout": 5}
+    )
     raw = response.text.strip()
     clean = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(clean)
@@ -111,12 +119,16 @@ Respond ONLY with a JSON object, no markdown:
     "reason": "why this slot is best"
 }}"""
 
-    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+    response = model.generate_content(
+        prompt,
+        request_options={"timeout": 5}
+    )
     raw = response.text.strip()
     clean = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(clean)
+
+
 def calculate_wait_time(faculty_id: str, queue_position: int, db) -> str:
-    # Get last 10 completed sessions for this faculty
     completed = list(db.doubts.find({
         "faculty_id": faculty_id,
         "status": "completed",

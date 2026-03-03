@@ -36,3 +36,6 @@ class ForgotPassword(BaseModel):
 class SecuritySetup(BaseModel):
     security_question: str
     security_answer: str
+
+class MessageRequest(BaseModel):
+    message: str

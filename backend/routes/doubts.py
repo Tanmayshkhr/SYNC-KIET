@@ -4,6 +4,7 @@ from utils.jwt import verify_token
 from utils.ai import cluster_doubts, calculate_wait_time
 from routes.timetable import get_faculty_status
 from models.doubt import DoubtRequest
+from models.user import MessageRequest
 from datetime import datetime
 from bson import ObjectId
 import os
@@ -28,7 +29,8 @@ def submit_doubt(data: DoubtRequest, authorization: str = Header(...)):
         "faculty_id": data.faculty_id,
         "status": "pending",
         "created_at": datetime.utcnow(),
-        "group_session_id": None
+        "grouped": False,
+        "cluster_id": None
     }
     result = db.doubts.insert_one(doubt)
     doubt_id = str(result.inserted_id)
@@ -40,6 +42,18 @@ def submit_doubt(data: DoubtRequest, authorization: str = Header(...)):
     }))
 
     cluster_result = cluster_doubts(pending_doubts)
+
+    # Save clustering result to MongoDB
+    if cluster_result.get("grouped"):
+        cluster_id = cluster_result.get("cluster_name", "cluster_" + doubt_id[:8])
+        db.doubts.update_many(
+            {"_id": {"$in": [ObjectId(d["_id"]) if isinstance(d["_id"], str) else d["_id"] for d in pending_doubts]}},
+            {"$set": {
+                "grouped": True,
+                "cluster_id": cluster_id,
+                "cluster_name": cluster_result.get("cluster_name")
+            }}
+        )
 
     queue_position = db.doubts.count_documents({
         "faculty_id": data.faculty_id,
@@ -72,7 +86,7 @@ def get_my_doubts(authorization: str = Header(...)):
     if not user:
         raise HTTPException(401, "Unauthorized")
 
-    doubts = list(db.doubts.find({"student_id": user["id"]}))
+    doubts = list(db.doubts.find({"student_id": user["id"]}).sort("created_at", -1))
     for d in doubts:
         d["_id"] = str(d["_id"])
         d["created_at"] = str(d["created_at"])
@@ -104,13 +118,16 @@ def accept_doubt(doubt_id: str, authorization: str = Header(...)):
 
     db.doubts.update_one(
         {"_id": ObjectId(doubt_id)},
-        {"$set": {"status": "active", "accepted_at": datetime.utcnow()}}
+        {"$set": {
+            "status": "active",
+            "accepted_at": datetime.utcnow(),
+        }}
     )
     db.faculty.update_one(
         {"_id": ObjectId(user["id"])},
-        {"$set": {"status": "busy"}}
+        {"$set": {"status": "busy", "session_started_at": datetime.utcnow()}}
     )
-    return {"message": "Session started"}
+    return {"message": "Session started", "auto_complete_in": "30 minutes"}
 
 @router.put("/complete/{doubt_id}")
 def complete_doubt(doubt_id: str, authorization: str = Header(...)):
@@ -130,7 +147,6 @@ def complete_doubt(doubt_id: str, authorization: str = Header(...)):
     return {"message": "Session completed"}
 
 @router.put("/reject/{doubt_id}")
-@router.put("/reject/{doubt_id}")
 def reject_doubt(doubt_id: str, authorization: str = Header(...)):
     token = authorization.replace("Bearer ", "")
     user = verify_token(token)
@@ -148,7 +164,7 @@ def reject_doubt(doubt_id: str, authorization: str = Header(...)):
     )
     db.faculty.update_one(
         {"_id": ObjectId(user["id"])},
-        {"$set": {"status": "unavailable"}}
+        {"$set": {"status": "available"}}
     )
     db.override_logs.insert_one({
         "faculty_id": user["id"],
@@ -158,18 +174,19 @@ def reject_doubt(doubt_id: str, authorization: str = Header(...)):
     })
     return {"message": "Session rejected, student re-queued as priority"}
 
+@router.post("/send-message/{doubt_id}")
+def send_message(doubt_id: str, data: MessageRequest, authorization: str = Header(...)):
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user or user["role"] != "faculty":
+        raise HTTPException(401, "Unauthorized")
+
     db.doubts.update_one(
         {"_id": ObjectId(doubt_id)},
-        {"$set": {"status": "pending", "rejected_at": datetime.utcnow()}}
+        {"$set": {
+            "faculty_message": data.message,
+            "message_sent_at": datetime.utcnow(),
+            "message_read": False
+        }}
     )
-    db.faculty.update_one(
-        {"_id": ObjectId(user["id"])},
-        {"$set": {"status": "unavailable"}}
-    )
-    db.override_logs.insert_one({
-        "faculty_id": user["id"],
-        "action": "rejected_session",
-        "doubt_id": doubt_id,
-        "timestamp": datetime.utcnow()
-    })
-    return {"message": "Session rejected, student re-queued"}
+    return {"message": "Message sent successfully"}

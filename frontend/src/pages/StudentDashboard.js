@@ -10,6 +10,24 @@ export default function StudentDashboard({ user, setUser }) {
   const [selectedFaculty, setSelectedFaculty] = useState(null);
   const [myDoubts, setMyDoubts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
+  const [availFilter, setAvailFilter] = useState("");
+  const [sortBy, setSortBy] = useState("default");
+
+  const filteredFaculty = faculty
+    .filter(f => f.faculty_name?.toLowerCase().includes(search.toLowerCase()))
+    .filter(f => subjectFilter ? f.subject === subjectFilter : true)
+    .filter(f => availFilter ? f.status === availFilter : true)
+    .sort((a, b) => {
+      if (sortBy === "available") {
+        const order = { available: 0, lunch: 1, busy: 2, not_arrived: 3, left: 4 };
+        return (order[a.status] ?? 5) - (order[b.status] ?? 5);
+      }
+      if (sortBy === "name") return a.faculty_name?.localeCompare(b.faculty_name);
+      if (sortBy === "queue") return (a.queue_count || 0) - (b.queue_count || 0);
+      return 0;
+    });
 
   useEffect(() => {
     requestNotificationPermission();
@@ -118,11 +136,60 @@ export default function StudentDashboard({ user, setUser }) {
               <p style={{ color: "#666", marginTop: 4 }}>Live availability · AI-powered queue · Smart grouping</p>
             </div>
 
+            {/* Search and Filters */}
+            <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              {/* Search */}
+              <input
+                placeholder="🔍 Search faculty by name..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ flex: 1, minWidth: 200, padding: "10px 14px", borderRadius: 8, border: "1.5px solid #e0e0e0", fontSize: 14, outline: "none" }}
+              />
+
+              {/* Subject Filter */}
+              <select value={subjectFilter} onChange={e => setSubjectFilter(e.target.value)}
+                style={{ padding: "10px 14px", borderRadius: 8, border: "1.5px solid #e0e0e0", fontSize: 13, outline: "none", color: "#444" }}>
+                <option value="">All Subjects</option>
+                {[...new Set(faculty.map(f => f.subject))].sort().map(s => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+
+              {/* Availability Filter */}
+              <select value={availFilter} onChange={e => setAvailFilter(e.target.value)}
+                style={{ padding: "10px 14px", borderRadius: 8, border: "1.5px solid #e0e0e0", fontSize: 13, outline: "none", color: "#444" }}>
+                <option value="">All Status</option>
+                <option value="available">Available Now</option>
+                <option value="busy">In Class</option>
+                <option value="lunch">Lunch Break</option>
+                <option value="not_arrived">Not Arrived</option>
+                <option value="left">Left</option>
+              </select>
+
+              {/* Sort */}
+              <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+                style={{ padding: "10px 14px", borderRadius: 8, border: "1.5px solid #e0e0e0", fontSize: 13, outline: "none", color: "#444" }}>
+                <option value="default">Sort: Default</option>
+                <option value="available">Available First</option>
+                <option value="name">Name A-Z</option>
+                <option value="queue">Least Queue</option>
+              </select>
+
+              {/* Results count */}
+              <div style={{ fontSize: 12, color: "#888", whiteSpace: "nowrap" }}>
+                {filteredFaculty.length} faculty found
+              </div>
+            </div>
+
             {loading ? (
               <div style={{ textAlign: "center", padding: 60, color: "#666" }}>Loading faculty...</div>
+            ) : filteredFaculty.length === 0 ? (
+              <div style={{ background: "#fff", borderRadius: 12, padding: 40, textAlign: "center", color: "#666" }}>
+                No faculty found matching your filters
+              </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-                {faculty.map((f, i) => (
+                {filteredFaculty.map((f, i) => (
                   <div key={i} style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", border: f.status === "available" ? `2px solid ${BLUE}` : "2px solid transparent" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                       <div>
@@ -131,9 +198,20 @@ export default function StudentDashboard({ user, setUser }) {
                       </div>
                       <StatusBadge status={f.status} />
                     </div>
-                    <div style={{ fontSize: 12, color: "#888", marginBottom: 14 }}>
-                      {f.message}
+                    <div style={{ fontSize: 12, color: "#888", marginBottom: 6 }}>{f.message}</div>
+                    {f.cabin && (
+                      <div style={{ fontSize: 12, color: "#444", marginBottom: 6 }}>
+                        📍 Cabin {f.cabin} · {f.block}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 12, color: BLUE, marginBottom: 8 }}>
+                      ✉️ {f.email}
                     </div>
+                    {f.queue_count > 0 && (
+                      <div style={{ fontSize: 11, color: "#f59e0b", background: "#fef3c7", borderRadius: 6, padding: "4px 10px", marginBottom: 8, display: "inline-block" }}>
+                        👥 {f.queue_count} student{f.queue_count > 1 ? "s" : ""} in queue
+                      </div>
+                    )}
                     {f.free_slots_today?.length > 0 && (
                       <div style={{ fontSize: 11, color: "#444", background: "#f0f4f8", borderRadius: 6, padding: "6px 10px", marginBottom: 12 }}>
                         Next free: <b>{f.free_slots_today[0]?.start}</b>
@@ -170,6 +248,12 @@ export default function StudentDashboard({ user, setUser }) {
                       <div style={{ fontWeight: 700, color: "#1a1a1a", marginBottom: 4 }}>{d.topic}</div>
                       <div style={{ fontSize: 12, color: "#666" }}>{d.subject} · {d.created_at?.slice(0, 10)}</div>
                       <div style={{ fontSize: 12, color: "#444", marginTop: 4 }}>{d.description?.slice(0, 60)}...</div>
+                      {d.faculty_message && (
+                        <div style={{ marginTop: 10, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "10px 14px" }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#1a73e8", marginBottom: 4 }}>💬 Message from Faculty</div>
+                          <div style={{ fontSize: 13, color: "#1e40af" }}>{d.faculty_message}</div>
+                        </div>
+                      )}
                     </div>
                     <StatusBadge status={d.status} />
                   </div>
