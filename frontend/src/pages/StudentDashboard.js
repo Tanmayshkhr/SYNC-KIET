@@ -274,6 +274,10 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
             sendNotification("Session Rejected", `You've been re-queued as priority for ${newDoubt.topic}`);
           }
         }
+        // Notify when grouped
+        if (oldDoubt && !oldDoubt.grouped && newDoubt.grouped) {
+          sendNotification("Grouped for Session!", `Your doubt on "${newDoubt.topic}" has been grouped with similar doubts. You'll be resolved together!`);
+        }
       });
 
       setMyDoubts(newDoubts);
@@ -455,7 +459,12 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
                 {myDoubts.map((d, i) => (
                   <div key={i} className="faculty-card" style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
-                      <div style={{ fontWeight: 700, color: textColor, marginBottom: 4 }}>{d.topic}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <div style={{ fontWeight: 700, color: textColor }}>{d.topic}</div>
+                        {d.grouped && (
+                          <span style={{ fontSize: 10, padding: "2px 8px", background: "#ede9fe", color: "#7c3aed", borderRadius: 10, fontWeight: 700 }}>🤝 GROUPED</span>
+                        )}
+                      </div>
                       <div style={{ fontSize: 12, color: subColor }}>{d.subject} · {d.created_at?.slice(0, 10)}</div>
                       <div style={{ fontSize: 12, color: "#444", marginTop: 4 }}>{d.description?.slice(0, 60)}...</div>
                       {d.faculty_message && (

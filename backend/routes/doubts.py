@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Header
 from pymongo import MongoClient
 from utils.jwt import verify_token
-from utils.ai import cluster_doubts, calculate_wait_time
+from utils.ai import cluster_doubts, calculate_wait_time, find_similar_doubts
 from routes.timetable import get_faculty_status
 from models.doubt import DoubtRequest
 from models.user import MessageRequest
@@ -39,7 +39,8 @@ async def submit_doubt(data: DoubtRequest, authorization: str = Header(...)):
     pending_doubts = list(db.doubts.find({
         "faculty_id": data.faculty_id,
         "status": "pending",
-        "subject": data.subject
+        "subject": data.subject,
+        "student_id": {"$ne": user["id"]}
     }))
 
     cluster_result = cluster_doubts(pending_doubts)
@@ -206,3 +207,59 @@ async def send_message(doubt_id: str, data: MessageRequest, authorization: str =
     )
     await _broadcast()
     return {"message": "Message sent successfully"}
+
+
+@router.get("/find-similar")
+def find_similar(authorization: str = Header(...)):
+    """Analyze the current queue and suggest groups of similar topics."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user or user["role"] != "faculty":
+        raise HTTPException(401, "Unauthorized")
+
+    doubts = list(db.doubts.find({
+        "faculty_id": user["id"],
+        "status": "pending"
+    }).sort("created_at", 1))
+
+    for d in doubts:
+        d["_id"] = str(d["_id"])
+
+    result = find_similar_doubts(doubts)
+    return result
+
+
+@router.post("/group-doubts")
+async def group_doubts(data: dict, authorization: str = Header(...)):
+    """Manually group selected doubts together."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user or user["role"] != "faculty":
+        raise HTTPException(401, "Unauthorized")
+
+    doubt_ids = data.get("doubt_ids", [])
+    group_name = data.get("group_name", "Grouped Doubts")
+
+    if len(doubt_ids) < 2:
+        raise HTTPException(400, "Need at least 2 doubts to group")
+
+    cluster_id = f"manual_{doubt_ids[0][:8]}_{int(datetime.utcnow().timestamp())}"
+
+    # Get student count for the notification message
+    grouped_doubts = list(db.doubts.find({"_id": {"$in": [ObjectId(did) for did in doubt_ids]}}))
+    student_names = [d.get("student_name", "Student") for d in grouped_doubts]
+    notify_msg = f"🤝 You've been grouped with {len(student_names) - 1} other student(s) for a group session on \"{group_name}\". Please wait together."
+
+    db.doubts.update_many(
+        {"_id": {"$in": [ObjectId(did) for did in doubt_ids]}},
+        {"$set": {
+            "grouped": True,
+            "cluster_id": cluster_id,
+            "cluster_name": group_name,
+            "faculty_message": notify_msg,
+            "message_sent_at": datetime.utcnow(),
+            "message_read": False
+        }}
+    )
+    await _broadcast()
+    return {"message": f"Grouped {len(doubt_ids)} doubts", "cluster_id": cluster_id}

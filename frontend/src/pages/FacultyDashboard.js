@@ -37,6 +37,9 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
   const [page, setPage] = useState("dashboard");
   const [messagePopup, setMessagePopup] = useState(null);
   const [customMessage, setCustomMessage] = useState("");
+  const [groupModal, setGroupModal] = useState(null);
+  const [groupLoading, setGroupLoading] = useState(false);
+  const [selectedForGroup, setSelectedForGroup] = useState({});
   const wsRef = useRef(null);
 
   const sendNotification = (title, body) => {
@@ -202,6 +205,91 @@ const rejectDoubt = async (doubt) => {
     }
   };
 
+  const findSimilar = async () => {
+    setGroupLoading(true);
+    try {
+      const res = await fetch(`${API}/doubts/find-similar`, {
+        headers: { authorization: `Bearer ${user.token}` }
+      });
+      const data = await res.json();
+      const initialSelection = {};
+      (data.groups || []).forEach((g, gi) => {
+        g.doubts.forEach(d => { initialSelection[d._id] = gi; });
+      });
+      setSelectedForGroup(initialSelection);
+      setGroupModal(data);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to find similar doubts");
+    }
+    setGroupLoading(false);
+  };
+
+  const confirmGroup = async (group) => {
+    const selectedIds = group.doubts
+      .filter(d => selectedForGroup[d._id] !== undefined)
+      .map(d => d._id);
+    if (selectedIds.length < 2) {
+      alert("Select at least 2 doubts to group");
+      return;
+    }
+    try {
+      await fetch(`${API}/doubts/group-doubts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${user.token}`
+        },
+        body: JSON.stringify({
+          doubt_ids: selectedIds,
+          group_name: group.canonical_topic
+        })
+      });
+      setGroupModal(null);
+      setSelectedForGroup({});
+      fetchQueue();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const confirmAllGroups = async () => {
+    if (!groupModal) return;
+    for (const group of groupModal.groups) {
+      const selectedIds = group.doubts
+        .filter(d => selectedForGroup[d._id] !== undefined)
+        .map(d => d._id);
+      if (selectedIds.length >= 2) {
+        await fetch(`${API}/doubts/group-doubts`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            authorization: `Bearer ${user.token}`
+          },
+          body: JSON.stringify({
+            doubt_ids: selectedIds,
+            group_name: group.canonical_topic
+          })
+        });
+      }
+    }
+    setGroupModal(null);
+    setSelectedForGroup({});
+    fetchQueue();
+  };
+
+  const toggleDoubtSelection = (doubtId, groupIndex) => {
+    setSelectedForGroup(prev => {
+      const next = { ...prev };
+      if (next[doubtId] !== undefined) {
+        delete next[doubtId];
+      } else {
+        next[doubtId] = groupIndex;
+      }
+      return next;
+    });
+  };
+
   const fmt = s => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   const logout = () => { localStorage.clear(); setUser(null); };
 
@@ -302,8 +390,16 @@ const rejectDoubt = async (doubt) => {
 
               {/* Queue */}
               <div style={{ background: cardBg, borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: textColor, marginBottom: 16 }}>
-                  Student Queue ({queue.length})
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: textColor }}>
+                    Student Queue ({queue.length})
+                  </div>
+                  {queue.length >= 2 && !activeSession && (
+                    <button onClick={findSimilar} disabled={groupLoading}
+                      style={{ padding: "6px 14px", background: "linear-gradient(135deg, #8b5cf6, #6d28d9)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 11, opacity: groupLoading ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}>
+                      {groupLoading ? "Scanning..." : "🔍 Find Similar & Group"}
+                    </button>
+                  )}
                 </div>
                 {loading ? (
                   <div style={{ textAlign: "center", padding: 40, color: "#999" }}>Loading...</div>
@@ -513,6 +609,99 @@ const rejectDoubt = async (doubt) => {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group Similar Modal */}
+      {groupModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: cardBg, borderRadius: 16, padding: 28, width: 520, maxHeight: "80vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <div style={{ fontWeight: 700, fontSize: 18, color: textColor }}>🔍 Similar Doubts Found</div>
+              <button onClick={() => { setGroupModal(null); setSelectedForGroup({}); }}
+                style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: subColor }}>✕</button>
+            </div>
+            <div style={{ fontSize: 13, color: subColor, marginBottom: 20 }}>
+              We detected topics that look similar. Review and confirm to group them for a joint session. Students will be notified.
+            </div>
+
+            {groupModal.groups.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 30, color: subColor }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>🤷</div>
+                No similar doubts found in the current queue.
+              </div>
+            ) : (
+              <>
+                {groupModal.groups.map((group, gi) => (
+                  <div key={gi} style={{
+                    border: "2px solid #8b5cf6", background: darkMode ? "#1e1b4b" : "#f5f3ff",
+                    borderRadius: 12, padding: 16, marginBottom: 14
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: "#7c3aed", fontSize: 14 }}>
+                          🤝 {group.canonical_topic}
+                        </div>
+                        <div style={{ fontSize: 11, color: subColor, marginTop: 2 }}>
+                          {group.count} students · Confidence: {group.confidence}
+                        </div>
+                      </div>
+                      <button onClick={() => confirmGroup(group)}
+                        style={{ padding: "6px 14px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
+                        Group These
+                      </button>
+                    </div>
+
+                    {group.doubts.map((d, di) => {
+                      const isSelected = selectedForGroup[d._id] !== undefined;
+                      return (
+                        <div key={d._id} onClick={() => toggleDoubtSelection(d._id, gi)}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                            background: isSelected ? (darkMode ? "#312e81" : "#ede9fe") : (darkMode ? "#334155" : "#fff"),
+                            border: isSelected ? "1.5px solid #7c3aed" : `1px solid ${borderColor}`,
+                            borderRadius: 8, marginBottom: 6, cursor: "pointer", transition: "all 0.15s"
+                          }}>
+                          <div style={{
+                            width: 18, height: 18, borderRadius: 4,
+                            border: isSelected ? "2px solid #7c3aed" : `2px solid ${borderColor}`,
+                            background: isSelected ? "#7c3aed" : "transparent",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            color: "#fff", fontSize: 12, fontWeight: 700, flexShrink: 0
+                          }}>
+                            {isSelected && "✓"}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: textColor }}>{d.student_name}</div>
+                            <div style={{ fontSize: 11, color: subColor }}>
+                              {d.topic} · {d.subject}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+
+                <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+                  <button onClick={confirmAllGroups}
+                    style={{ flex: 1, padding: "12px 0", background: "linear-gradient(135deg, #8b5cf6, #6d28d9)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
+                    Group All ({groupModal.groups.length} group{groupModal.groups.length > 1 ? "s" : ""})
+                  </button>
+                  <button onClick={() => { setGroupModal(null); setSelectedForGroup({}); }}
+                    style={{ padding: "12px 20px", background: darkMode ? "#334155" : "#f0f4f8", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", color: subColor, fontSize: 14 }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+
+            {groupModal.ungrouped?.length > 0 && (
+              <div style={{ marginTop: 14, fontSize: 12, color: subColor, borderTop: `1px solid ${borderColor}`, paddingTop: 12 }}>
+                {groupModal.ungrouped.length} doubt(s) have no similar match and will remain as individual entries.
+              </div>
+            )}
           </div>
         </div>
       )}
