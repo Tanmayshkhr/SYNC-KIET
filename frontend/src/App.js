@@ -1,3 +1,4 @@
+import AdminDashboard from "./pages/AdminDashboard";
 import { useState } from "react";
 import Login from "./pages/Login";
 import StudentDashboard from "./pages/StudentDashboard";
@@ -22,6 +23,7 @@ function App() {
   if (needsSetup && user) return <SecuritySetup user={user} onComplete={() => setNeedsSetup(false)} />;
   if (user.role === "student") return <StudentDashboard user={user} setUser={setUser} />;
   if (user.role === "faculty") return <FacultyDashboard user={user} setUser={setUser} />;
+  if (user.role === "admin") return <AdminDashboard user={user} setUser={setUser} />;
 }
 
 export default App;

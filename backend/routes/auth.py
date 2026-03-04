@@ -146,3 +146,21 @@ def setup_security(data: SecuritySetup, authorization: str = Header(...)):
         }}
     )
     return {"message": "Security question set successfully"}
+
+@router.post("/admin/login")
+def admin_login(data: StudentLogin):
+    admin = db.admin.find_one({"email": data.email})
+    if not admin:
+        raise HTTPException(401, "Invalid credentials")
+    if not bcrypt.checkpw(data.password.encode("utf-8"), admin["password"]):
+        raise HTTPException(401, "Invalid credentials")
+    token = create_token({
+        "id": str(admin["_id"]),
+        "role": "admin",
+        "name": admin["name"]
+    })
+    return {
+        "token": token,
+        "name": admin["name"],
+        "role": "admin"
+    }

@@ -159,8 +159,8 @@ const rejectDoubt = async (doubt) => {
       {/* Navbar */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e0e0e0", padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 8, background: BLUE, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 }}>S</div>
-          <span style={{ fontWeight: 800, fontSize: 18, color: BLUE }}>SYNC-KIET</span>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: BLUE, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 }}>P</div>
+          <span style={{ fontWeight: 800, fontSize: 18, color: BLUE }}>PuchoKIET</span>
           <span style={{ fontSize: 11, padding: "3px 10px", background: "#eff6ff", color: BLUE, borderRadius: 10, fontWeight: 700 }}>FACULTY</span>
         </div>
         <div style={{ display: "flex", gap: 8 }}>

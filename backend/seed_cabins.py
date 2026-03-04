@@ -1,5 +1,5 @@
 """
-SYNC-KIET - Cabin Numbers Seed Script
+PuchoKIET - Cabin Numbers Seed Script
 Run: python seed_cabins.py
 """
 

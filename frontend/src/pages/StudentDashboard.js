@@ -1,6 +1,45 @@
 import { useState, useEffect } from "react";
 import SubmitDoubt from "./SubmitDoubt";
 
+const styles = `
+  @keyframes pulseRing {
+    0% { transform: scale(0.8); opacity: 0.8; }
+    100% { transform: scale(2.5); opacity: 0; }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes skeleton {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+  .faculty-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+  }
+  .faculty-card:hover {
+    transform: translateY(-4px) !important;
+    box-shadow: 0 12px 32px rgba(26,115,232,0.15) !important;
+  }
+  .skeleton-box {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 400px 100%;
+    animation: skeleton 1.4s ease infinite;
+    border-radius: 8px;
+  }
+`;
+
+const StyleInjector = () => (
+  <style dangerouslySetInnerHTML={{ __html: styles }} />
+);
+
 const API = "http://localhost:8000";
 const BLUE = "#1a73e8";
 
@@ -107,11 +146,12 @@ export default function StudentDashboard({ user, setUser }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f0f4f8", fontFamily: "'Segoe UI', sans-serif" }}>
+      <StyleInjector />
       {/* Navbar */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e0e0e0", padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 8, background: BLUE, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 }}>S</div>
-          <span style={{ fontWeight: 800, fontSize: 18, color: BLUE }}>SYNC-KIET</span>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: BLUE, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 }}>P</div>
+          <span style={{ fontWeight: 800, fontSize: 18, color: BLUE }}>PuchoKIET</span>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           {[["Home", "home"], ["My Doubts", "mydoubts"], ["Analytics", "analytics"]].map(([label, p]) => (
@@ -190,7 +230,7 @@ export default function StudentDashboard({ user, setUser }) {
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
                 {filteredFaculty.map((f, i) => (
-                  <div key={i} style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", border: f.status === "available" ? `2px solid ${BLUE}` : "2px solid transparent" }}>
+                  <div key={i} className="faculty-card" style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", border: f.status === "available" ? `2px solid ${BLUE}` : "2px solid transparent" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: 15, color: "#1a1a1a" }}>{f.faculty_name}</div>
@@ -243,7 +283,7 @@ export default function StudentDashboard({ user, setUser }) {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {myDoubts.map((d, i) => (
-                  <div key={i} style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div key={i} className="faculty-card" style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <div style={{ fontWeight: 700, color: "#1a1a1a", marginBottom: 4 }}>{d.topic}</div>
                       <div style={{ fontSize: 12, color: "#666" }}>{d.subject} · {d.created_at?.slice(0, 10)}</div>
@@ -272,7 +312,7 @@ export default function StudentDashboard({ user, setUser }) {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
               {[
-                ["Total Doubts", myDoubts.length, BLUE],
+                ["All Time Doubts", myDoubts.length, BLUE],
                 ["Pending", myDoubts.filter(d => d.status === "pending").length, "#f59e0b"],
                 ["Completed", myDoubts.filter(d => d.status === "completed").length, "#10b981"],
               ].map(([label, value, color]) => (
@@ -281,6 +321,18 @@ export default function StudentDashboard({ user, setUser }) {
                   <div style={{ fontSize: 32, fontWeight: 800, color }}>{value}</div>
                 </div>
               ))}
+              <div style={{ background: "#fff", borderRadius: 12, padding: 20, flex: 1, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontSize: 13, color: "#888" }}>Active</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: "#1a73e8" }}>
+                  {myDoubts.filter(d => d.status === "active").length}
+                </div>
+              </div>
+              <div style={{ background: "#fff", borderRadius: 12, padding: 20, flex: 1, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontSize: 13, color: "#888" }}>Rejected</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: "#ef4444" }}>
+                  {myDoubts.filter(d => d.status === "rejected").length}
+                </div>
+              </div>
             </div>
             <div style={{ background: "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Best Time to Visit Faculty</div>
@@ -301,22 +353,48 @@ export default function StudentDashboard({ user, setUser }) {
   );
 }
 
-function StatusBadge({ status }) {
-  const map = {
-    available: { color: "#10b981", bg: "#d1fae5", label: "Available" },
-    busy: { color: "#ef4444", bg: "#fee2e2", label: "Busy" },
-    free_soon: { color: "#f59e0b", bg: "#fef3c7", label: "Free Soon" },
-    lunch: { color: "#f59e0b", bg: "#fef3c7", label: "Lunch Break" },
-    not_arrived: { color: "#6b7280", bg: "#f3f4f6", label: "Not Arrived" },
-    left: { color: "#6b7280", bg: "#f3f4f6", label: "Left" },
-    pending: { color: "#f59e0b", bg: "#fef3c7", label: "Pending" },
-    active: { color: "#10b981", bg: "#d1fae5", label: "Active" },
-    completed: { color: "#6b7280", bg: "#f3f4f6", label: "Completed" },
-  };
-  const s = map[status] || map.not_arrived;
+const StatusBadge = ({ status }) => {
+  const config = {
+    available: { label: "Available", color: "#22c55e", bg: "#dcfce7" },
+    busy: { label: "In Class", color: "#1a73e8", bg: "#eff6ff" },
+    lunch: { label: "Lunch Break", color: "#f59e0b", bg: "#fef3c7" },
+    not_arrived: { label: "Not Arrived", color: "#94a3b8", bg: "#f1f5f9" },
+    left: { label: "Left", color: "#ef4444", bg: "#fee2e2" },
+  }[status] || { label: status, color: "#94a3b8", bg: "#f1f5f9" };
+
   return (
-    <span style={{ padding: "4px 10px", borderRadius: 20, background: s.bg, color: s.color, fontSize: 11, fontWeight: 700 }}>
-      {s.label}
-    </span>
+    <div style={{
+      display: "flex", alignItems: "center", gap: 6,
+      padding: "4px 10px", borderRadius: 20,
+      background: config.bg,
+    }}>
+      {status === "available" && (
+        <div style={{ position: "relative", width: 10, height: 10 }}>
+          <div style={{
+            position: "absolute", inset: 0, borderRadius: "50%",
+            background: config.color, opacity: 0.4,
+            animation: "pulseRing 1.5s ease-out infinite"
+          }} />
+          <div style={{
+            position: "absolute", inset: 2, borderRadius: "50%",
+            background: config.color,
+          }} />
+        </div>
+      )}
+      {status === "busy" && (
+        <div style={{
+          width: 8, height: 8, borderRadius: "50%",
+          border: `2px solid ${config.color}`,
+          borderTopColor: "transparent",
+          animation: "spin 0.8s linear infinite"
+        }} />
+      )}
+      {status === "lunch" && (
+        <span style={{ fontSize: 10, animation: "bounce 1s ease-in-out infinite" }}>🍽️</span>
+      )}
+      {status === "not_arrived" && <span style={{ fontSize: 10 }}>⏰</span>}
+      {status === "left" && <span style={{ fontSize: 10 }}>👋</span>}
+      <span style={{ fontSize: 11, fontWeight: 700, color: config.color }}>{config.label}</span>
+    </div>
   );
-}
+};

@@ -91,9 +91,9 @@ export default function Login({ setUser }) {
     <div style={styles.page}>
       <div style={styles.card}>
         <div style={styles.logo}>
-          <div style={styles.logoIcon}>S</div>
+          <div style={styles.logoIcon}>P</div>
           <div>
-            <h1 style={styles.logoText}>SYNC-KIET</h1>
+            <h1 style={styles.logoText}>PuchoKIET</h1>
             <p style={styles.logoSub}>AI-Powered Doubt Resolution System</p>
           </div>
         </div>
@@ -106,6 +106,10 @@ export default function Login({ setUser }) {
           <button style={{ ...styles.tab, ...(tab === "faculty" ? styles.tabActive : {}) }}
             onClick={() => { setTab("faculty"); setError(""); setSuccess(""); }}>
             Faculty
+          </button>
+          <button style={{ ...styles.tab, ...(tab === "admin" ? styles.tabActive : {}) }}
+            onClick={() => { setTab("admin"); setError(""); setSuccess(""); }}>
+            Admin
           </button>
         </div>
 

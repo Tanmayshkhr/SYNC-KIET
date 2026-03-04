@@ -1,9 +1,8 @@
-import google.generativeai as genai
+from google import genai
 import os
 import json
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-2.0-flash")
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 def cluster_doubts(doubts: list):
     if len(doubts) < 2:
@@ -33,10 +32,7 @@ Respond ONLY with a JSON object, no markdown, no explanation:
     "students": ["list of student names to group"]
 }}"""
 
-        response = model.generate_content(
-            prompt,
-            request_options={"timeout": 5}
-        )
+        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
         raw = response.text.strip()
         clean = raw.replace("```json", "").replace("```", "").strip()
         return json.loads(clean)
@@ -98,10 +94,7 @@ Respond ONLY with a JSON object, no markdown:
     "estimated_complexity": "easy/medium/hard"
 }}"""
 
-    response = model.generate_content(
-        prompt,
-        request_options={"timeout": 5}
-    )
+    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     raw = response.text.strip()
     clean = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(clean)
@@ -119,10 +112,7 @@ Respond ONLY with a JSON object, no markdown:
     "reason": "why this slot is best"
 }}"""
 
-    response = model.generate_content(
-        prompt,
-        request_options={"timeout": 5}
-    )
+    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     raw = response.text.strip()
     clean = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(clean)

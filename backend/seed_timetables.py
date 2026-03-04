@@ -1,5 +1,5 @@
 """
-SYNC-KIET - Complete Timetable Seed Script
+PuchoKIET - Complete Timetable Seed Script
 Seeds timetable data for all 26 faculty members
 Run: python seed_timetables.py
 """
