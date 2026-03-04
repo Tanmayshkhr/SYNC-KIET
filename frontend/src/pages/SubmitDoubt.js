@@ -68,7 +68,13 @@ const SUBJECT_TOPICS = {
   ]
 };
 
-export default function SubmitDoubt({ user, faculty, onBack, onSubmitted }) {
+export default function SubmitDoubt({ user, faculty, onBack, onSubmitted, darkMode }) {
+  const bg = darkMode ? "#0f172a" : "#f0f4f8";
+  const cardBg = darkMode ? "#1e293b" : "#fff";
+  const textColor = darkMode ? "#f1f5f9" : "#1a1a1a";
+  const subColor = darkMode ? "#94a3b8" : "#666";
+  const borderColor = darkMode ? "#334155" : "#e0e0e0";
+
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     subject: faculty?.subject || "",
@@ -135,11 +141,11 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted }) {
   };
 
   if (step === 3 && result) return (
-    <div style={{ minHeight: "100vh", background: "#f0f4f8", fontFamily: "'Segoe UI', sans-serif", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 40, maxWidth: 480, width: "100%", boxShadow: "0 4px 24px rgba(0,0,0,0.08)", textAlign: "center" }}>
+    <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Segoe UI', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.3s" }}>
+      <div style={{ background: cardBg, borderRadius: 16, padding: 40, maxWidth: 480, width: "100%", boxShadow: "0 4px 24px rgba(0,0,0,0.08)", textAlign: "center" }}>
         <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#d1fae5", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: 28 }}>✓</div>
         <h2 style={{ color: "#10b981", margin: "0 0 8px" }}>Doubt Submitted!</h2>
-        <p style={{ color: "#666", marginBottom: 24 }}>Your doubt has been added to the queue</p>
+        <p style={{ color: subColor, marginBottom: 24 }}>Your doubt has been added to the queue</p>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 24 }}>
           {[
@@ -147,9 +153,9 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted }) {
             ["Est. Wait", result.estimated_wait],
             ["Faculty Status", result.faculty_status || "unknown"]
           ].map(([l, v]) => (
-            <div key={l} style={{ background: "#f0f4f8", borderRadius: 10, padding: 16 }}>
+            <div key={l} style={{ background: bg, borderRadius: 10, padding: 16 }}>
               <div style={{ fontSize: 20, fontWeight: 800, color: BLUE }}>{v}</div>
-              <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{l}</div>
+              <div style={{ fontSize: 11, color: subColor, marginTop: 4 }}>{l}</div>
             </div>
           ))}
         </div>
@@ -160,7 +166,7 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted }) {
             <div style={{ fontSize: 13, color: "#444" }}>
               {result.cluster_info.students?.length} students with similar doubts about <b>{result.cluster_info.cluster_name}</b> have been grouped together.
             </div>
-            <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>{result.cluster_info.recommendation}</div>
+            <div style={{ fontSize: 12, color: subColor, marginTop: 6 }}>{result.cluster_info.recommendation}</div>
           </div>
         )}
 
@@ -181,19 +187,19 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted }) {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f0f4f8", fontFamily: "'Segoe UI', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Segoe UI', sans-serif", transition: "background 0.3s" }}>
       {/* Navbar */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e0e0e0", padding: "0 32px", display: "flex", alignItems: "center", gap: 16, height: 64 }}>
-        <button onClick={onBack} style={{ padding: "8px 16px", border: "1px solid #e0e0e0", borderRadius: 8, background: "none", color: "#666", cursor: "pointer" }}>← Back</button>
-        <span style={{ fontWeight: 700, color: "#1a1a1a" }}>Submit Doubt</span>
+      <div style={{ background: cardBg, borderBottom: `1px solid ${borderColor}`, padding: "0 32px", display: "flex", alignItems: "center", gap: 16, height: 64 }}>
+        <button onClick={onBack} style={{ padding: "8px 16px", border: `1px solid ${borderColor}`, borderRadius: 8, background: "none", color: subColor, cursor: "pointer" }}>← Back</button>
+        <span style={{ fontWeight: 700, color: textColor }}>Submit Doubt</span>
       </div>
 
       <div style={{ maxWidth: 560, margin: "40px auto", padding: "0 16px" }}>
         {/* Faculty Info */}
-        <div style={{ background: "#fff", borderRadius: 12, padding: 20, marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ background: cardBg, borderRadius: 12, padding: 20, marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontWeight: 700, color: "#1a1a1a" }}>{faculty?.faculty_name}</div>
-            <div style={{ fontSize: 13, color: "#666" }}>{faculty?.subject}</div>
+            <div style={{ fontWeight: 700, color: textColor }}>{faculty?.faculty_name}</div>
+            <div style={{ fontSize: 13, color: subColor }}>{faculty?.subject}</div>
           </div>
           <span style={{ padding: "4px 12px", borderRadius: 20, background: "#d1fae5", color: "#10b981", fontSize: 12, fontWeight: 700 }}>
             {faculty?.status}
@@ -203,19 +209,19 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted }) {
         {/* Steps */}
         <div style={{ display: "flex", marginBottom: 24 }}>
           {["Topic", "Describe", "Submit"].map((s, i) => (
-            <div key={s} style={{ flex: 1, textAlign: "center", paddingBottom: 10, borderBottom: `2px solid ${step === i + 1 ? BLUE : "#e0e0e0"}`, color: step === i + 1 ? BLUE : "#999", fontSize: 13, fontWeight: step === i + 1 ? 700 : 400 }}>
+            <div key={s} style={{ flex: 1, textAlign: "center", paddingBottom: 10, borderBottom: `2px solid ${step === i + 1 ? BLUE : borderColor}`, color: step === i + 1 ? BLUE : "#999", fontSize: 13, fontWeight: step === i + 1 ? 700 : 400 }}>
               {i + 1}. {s}
             </div>
           ))}
         </div>
 
-        <div style={{ background: "#fff", borderRadius: 12, padding: 28, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+        <div style={{ background: cardBg, borderRadius: 12, padding: 28, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
           {step === 1 && (
             <div>
               <div style={{ marginBottom: 20 }}>
                 <label style={{ fontSize: 13, fontWeight: 600, color: "#444", display: "block", marginBottom: 6 }}>Subject</label>
                 <select value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })}
-                  style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "1.5px solid #e0e0e0", fontSize: 14, outline: "none" }}>
+                  style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: `1.5px solid ${borderColor}`, fontSize: 14, outline: "none", background: cardBg, color: textColor }}>
                   {["Web Technology", "Design and Analysis of Algorithms", "ANN and Machine Learning", "Computer Networks", "Data Analytics", "Universal Human Values", "Aptitude", "Soft Skills"].map(s => (
                     <option key={s}>{s}</option>
                   ))}
@@ -225,14 +231,14 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted }) {
                 <label style={{ fontSize: 13, fontWeight: 600, color: "#444", display: "block", marginBottom: 6 }}>Topic</label>
                 <input value={form.topic} onChange={e => { setForm({ ...form, topic: e.target.value }); setTopicSearch(e.target.value); }}
                   placeholder="Type or select a topic..."
-                  style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "1.5px solid #e0e0e0", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                  style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: `1.5px solid ${borderColor}`, fontSize: 14, outline: "none", boxSizing: "border-box", background: cardBg, color: textColor }} />
                 {topicSearch && filteredTopics.length > 0 && (
-                  <div style={{ border: "1px solid #e0e0e0", borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: "auto", background: "#fff", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
+                  <div style={{ border: `1px solid ${borderColor}`, borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: "auto", background: cardBg, boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
                     {filteredTopics.map(t => (
                       <div key={t} onClick={() => { setForm({ ...form, topic: t }); setTopicSearch(""); }}
-                        style={{ padding: "10px 14px", cursor: "pointer", fontSize: 13, color: "#1a1a1a", borderBottom: "1px solid #f0f0f0" }}
-                        onMouseEnter={e => e.target.style.background = "#f0f4f8"}
-                        onMouseLeave={e => e.target.style.background = "#fff"}>
+                        style={{ padding: "10px 14px", cursor: "pointer", fontSize: 13, color: textColor, borderBottom: `1px solid ${borderColor}` }}
+                        onMouseEnter={e => e.target.style.background = bg}
+                        onMouseLeave={e => e.target.style.background = cardBg}>
                         {t}
                       </div>
                     ))}
@@ -261,12 +267,12 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted }) {
                 <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
                   placeholder="Explain what you've tried and where you're stuck..."
                   rows={6}
-                  style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "1.5px solid #e0e0e0", fontSize: 14, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
+                  style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: `1.5px solid ${borderColor}`, fontSize: 14, outline: "none", resize: "vertical", boxSizing: "border-box", background: cardBg, color: textColor }} />
               </div>
               {error && <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 12 }}>{error}</div>}
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => setStep(1)}
-                  style={{ flex: 1, padding: "13px 0", background: "none", border: "1.5px solid #e0e0e0", borderRadius: 8, fontWeight: 600, cursor: "pointer", color: "#666" }}>
+                  style={{ flex: 1, padding: "13px 0", background: "none", border: `1.5px solid ${borderColor}`, borderRadius: 8, fontWeight: 600, cursor: "pointer", color: subColor }}>
                   Back
                 </button>
                 <button onClick={submitDoubt} disabled={loading}

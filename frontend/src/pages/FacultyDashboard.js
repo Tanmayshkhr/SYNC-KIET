@@ -3,7 +3,33 @@ import { useState, useEffect } from "react";
 const API = "http://localhost:8000";
 const BLUE = "#1a73e8";
 
-export default function FacultyDashboard({ user, setUser }) {
+const LiveClock = ({ textColor, subColor, cardBg }) => {
+  const [time, setTime] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", textAlign: "center" }}>
+      <div style={{ fontSize: 11, color: subColor, marginBottom: 4, fontWeight: 600 }}>LIVE TIME</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: "#1a73e8", fontVariantNumeric: "tabular-nums", letterSpacing: -1 }}>
+        {time.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+      </div>
+      <div style={{ fontSize: 11, color: subColor, marginTop: 4 }}>
+        {time.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}
+      </div>
+    </div>
+  );
+};
+
+export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode }) {
+  const bg = darkMode ? "#0f172a" : "#f0f4f8";
+  const cardBg = darkMode ? "#1e293b" : "#fff";
+  const textColor = darkMode ? "#f1f5f9" : "#1a1a1a";
+  const subColor = darkMode ? "#94a3b8" : "#666";
+  const borderColor = darkMode ? "#334155" : "#e0e0e0";
+  const navBg = darkMode ? "#1e293b" : "#fff";
+
   const [queue, setQueue] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [timer, setTimer] = useState(0);
@@ -155,9 +181,9 @@ const rejectDoubt = async (doubt) => {
   const logout = () => { localStorage.clear(); setUser(null); };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f0f4f8", fontFamily: "'Segoe UI', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Segoe UI', sans-serif", transition: "background 0.3s" }}>
       {/* Navbar */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e0e0e0", padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
+      <div style={{ background: navBg, borderBottom: `1px solid ${borderColor}`, padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: BLUE, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 }}>P</div>
           <span style={{ fontWeight: 800, fontSize: 18, color: BLUE }}>PuchoKIET</span>
@@ -166,14 +192,18 @@ const rejectDoubt = async (doubt) => {
         <div style={{ display: "flex", gap: 8 }}>
           {[["Dashboard", "dashboard"], ["Timetable", "timetable"]].map(([label, p]) => (
             <button key={p} onClick={() => setPage(p)}
-              style={{ padding: "8px 16px", border: "none", borderRadius: 8, background: page === p ? BLUE : "none", color: page === p ? "#fff" : "#666", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+              style={{ padding: "8px 16px", border: "none", borderRadius: 8, background: page === p ? BLUE : "none", color: page === p ? "#fff" : subColor, fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
               {label}
             </button>
           ))}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 13, color: "#444", fontWeight: 600 }}>{user.name}</span>
-          <button onClick={logout} style={{ padding: "8px 16px", border: "1px solid #e0e0e0", borderRadius: 8, background: "none", color: "#666", cursor: "pointer", fontSize: 13 }}>Logout</button>
+          <span style={{ fontSize: 13, color: subColor, fontWeight: 600 }}>{user.name}</span>
+          <button onClick={() => setDarkMode(!darkMode)}
+            style={{ padding: "6px 12px", background: "transparent", border: `1px solid ${borderColor}`, borderRadius: 8, cursor: "pointer", fontSize: 16 }}>
+            {darkMode ? "☀️" : "🌙"}
+          </button>
+          <button onClick={logout} style={{ padding: "8px 16px", border: `1px solid ${borderColor}`, borderRadius: 8, background: "none", color: subColor, cursor: "pointer", fontSize: 13 }}>Logout</button>
         </div>
       </div>
 
@@ -181,27 +211,28 @@ const rejectDoubt = async (doubt) => {
         {page === "dashboard" && (
           <>
             {/* Stats */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16, marginBottom: 28 }}>
               {[
                 ["Queue", queue.length, "#f59e0b"],
                 ["Active Session", activeSession ? "1" : "0", BLUE],
                 ["Session Time", activeSession ? fmt(timer) : "--", "#10b981"],
                 ["Status", activeSession ? "Busy" : "Available", activeSession ? "#ef4444" : "#10b981"],
               ].map(([label, value, color]) => (
-                <div key={label} style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-                  <div style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>{label}</div>
+                <div key={label} style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+                  <div style={{ fontSize: 12, color: subColor, marginBottom: 8 }}>{label}</div>
                   <div style={{ fontSize: 24, fontWeight: 800, color }}>{value}</div>
                 </div>
               ))}
+              <LiveClock textColor={textColor} subColor={subColor} cardBg={cardBg} />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
               {/* Active Session */}
-              <div style={{ background: "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: "#1a1a1a", marginBottom: 16 }}>Active Session</div>
+              <div style={{ background: cardBg, borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: textColor, marginBottom: 16 }}>Active Session</div>
                 {activeSession ? (
                   <>
-                    <div style={{ background: "#f0f4f8", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+                    <div style={{ background: darkMode ? "#334155" : "#f0f4f8", borderRadius: 10, padding: 16, marginBottom: 16 }}>
                       {activeSession.isGroup ? (
                         <>
                           <div style={{ fontWeight: 700, color: BLUE, marginBottom: 6 }}>🤝 Group Session</div>
@@ -212,9 +243,9 @@ const rejectDoubt = async (doubt) => {
                           ))}
                         </>
                       ) : (
-                        <div style={{ fontWeight: 700, color: "#1a1a1a", marginBottom: 4 }}>{activeSession.student_name}</div>
+                        <div style={{ fontWeight: 700, color: textColor, marginBottom: 4 }}>{activeSession.student_name}</div>
                       )}
-                      <div style={{ fontSize: 13, color: "#666", marginBottom: 4 }}>{activeSession.topic}</div>
+                      <div style={{ fontSize: 13, color: subColor, marginBottom: 4 }}>{activeSession.topic}</div>
                       <div style={{ fontSize: 12, color: "#888" }}>{activeSession.subject}</div>
                       <div style={{ fontSize: 12, color: "#888", marginTop: 8 }}>{activeSession.description}</div>
                     </div>
@@ -245,8 +276,8 @@ const rejectDoubt = async (doubt) => {
               </div>
 
               {/* Queue */}
-              <div style={{ background: "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: "#1a1a1a", marginBottom: 16 }}>
+              <div style={{ background: cardBg, borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: textColor, marginBottom: 16 }}>
                   Student Queue ({queue.length})
                 </div>
                 {loading ? (
@@ -284,12 +315,12 @@ const rejectDoubt = async (doubt) => {
                                   {groupDoubts.length} students
                                 </span>
                               </div>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a", marginBottom: 6 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: textColor, marginBottom: 6 }}>
                                 {groupDoubts[0].topic} · {groupDoubts[0].subject}
                               </div>
                               <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
                                 {groupDoubts.map((gd, gi) => (
-                                  <div key={gd._id} style={{ fontSize: 12, color: "#444", background: "#fff", borderRadius: 6, padding: "6px 10px" }}>
+                                  <div key={gd._id} style={{ fontSize: 12, color: subColor, background: cardBg, borderRadius: 6, padding: "6px 10px" }}>
                                     👤 {gd.student_name}
                                   </div>
                                 ))}
@@ -312,14 +343,14 @@ const rejectDoubt = async (doubt) => {
                           {/* Single doubts */}
                           {singles.map((d, i) => (
                             <div key={d._id} style={{
-                              border: d.priority === "urgent" ? "2px solid #ef4444" : "1px solid #e0e0e0",
-                              background: d.priority === "urgent" ? "#fff5f5" : "#fff",
+                              border: d.priority === "urgent" ? "2px solid #ef4444" : `1px solid ${borderColor}`,
+                              background: d.priority === "urgent" ? "#fff5f5" : cardBg,
                               borderRadius: 10, padding: 14, marginBottom: 10
                             }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                                 <div>
                                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                    <div style={{ fontWeight: 700, color: "#1a1a1a", fontSize: 14 }}>
+                                    <div style={{ fontWeight: 700, color: textColor, fontSize: 14 }}>
                                       #{i + 1} {d.student_name}
                                     </div>
                                     {d.priority === "urgent" && (
@@ -328,7 +359,7 @@ const rejectDoubt = async (doubt) => {
                                       </span>
                                     )}
                                   </div>
-                                  <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{d.topic}</div>
+                                  <div style={{ fontSize: 12, color: subColor, marginTop: 2 }}>{d.topic}</div>
                                   <div style={{ fontSize: 11, color: "#888" }}>{d.subject}</div>
                                 </div>
                               </div>
@@ -361,13 +392,13 @@ const rejectDoubt = async (doubt) => {
         )}
 
         {page === "timetable" && (
-          <div style={{ background: "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 20 }}>Today's Timetable</div>
+          <div style={{ background: cardBg, borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 20, color: textColor }}>Today's Timetable</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
               {["9:10", "10:00", "10:50", "11:40", "Lunch", "2:20", "3:10", "4:00"].map((time, i) => (
-                <div key={i} style={{ background: "#f0f4f8", borderRadius: 8, padding: 12, textAlign: "center" }}>
-                  <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>{time}</div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "#1a1a1a" }}>
+                <div key={i} style={{ background: darkMode ? "#334155" : "#f0f4f8", borderRadius: 8, padding: 12, textAlign: "center" }}>
+                  <div style={{ fontSize: 11, color: subColor, marginBottom: 4 }}>{time}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: textColor }}>
                     {i === 4 ? "Lunch" : "Free"}
                   </div>
                 </div>
@@ -380,14 +411,14 @@ const rejectDoubt = async (doubt) => {
       {/* Message Popup */}
       {messagePopup && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 420, boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>💬 Send Message</div>
-            <div style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>To: {messagePopup.student_name}</div>
+          <div style={{ background: cardBg, borderRadius: 16, padding: 28, width: 420, boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6, color: textColor }}>💬 Send Message</div>
+            <div style={{ fontSize: 13, color: subColor, marginBottom: 16 }}>To: {messagePopup.student_name}</div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               {QUICK_MESSAGES.map((msg, i) => (
                 <button key={i} onClick={() => sendMessage(messagePopup._id, msg)}
-                  style={{ padding: "10px 14px", background: "#f0f4f8", border: "1px solid #e0e0e0", borderRadius: 8, textAlign: "left", cursor: "pointer", fontSize: 13, color: "#1a1a1a", fontWeight: 500 }}>
+                  style={{ padding: "10px 14px", background: darkMode ? "#334155" : "#f0f4f8", border: `1px solid ${borderColor}`, borderRadius: 8, textAlign: "left", cursor: "pointer", fontSize: 13, color: textColor, fontWeight: 500 }}>
                   {msg}
                 </button>
               ))}
@@ -397,7 +428,7 @@ const rejectDoubt = async (doubt) => {
               placeholder="Or type custom message..."
               value={customMessage}
               onChange={e => setCustomMessage(e.target.value)}
-              style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1.5px solid #e0e0e0", fontSize: 13, outline: "none", boxSizing: "border-box", marginBottom: 12 }}
+              style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: `1.5px solid ${borderColor}`, fontSize: 13, outline: "none", boxSizing: "border-box", marginBottom: 12, background: cardBg, color: textColor }}
             />
 
             <div style={{ display: "flex", gap: 10 }}>
@@ -408,7 +439,7 @@ const rejectDoubt = async (doubt) => {
                 </button>
               )}
               <button onClick={() => { setMessagePopup(null); setCustomMessage(""); }}
-                style={{ flex: 1, padding: "11px 0", background: "#f0f4f8", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", color: "#666" }}>
+                style={{ flex: 1, padding: "11px 0", background: darkMode ? "#334155" : "#f0f4f8", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", color: subColor }}>
                 Cancel
               </button>
             </div>
