@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, doubts, timetable, faculty, admin
+from routes import auth, doubts, timetable, faculty, admin, face
 from typing import List
 
 app = FastAPI(title="PuchoKIET API")
@@ -33,6 +33,7 @@ app.include_router(doubts.router, prefix="/doubts", tags=["Doubts"])
 app.include_router(timetable.router, prefix="/timetable", tags=["Timetable"])
 app.include_router(faculty.router, prefix="/faculty", tags=["Faculty"])
 app.include_router(admin.router, prefix="/admin")
+app.include_router(face.router, prefix="/face", tags=["Face Recognition"])
 
 @app.get("/")
 def root():

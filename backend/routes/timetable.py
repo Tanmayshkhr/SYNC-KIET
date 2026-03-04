@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pymongo import MongoClient
 from datetime import datetime
+from utils.jwt import verify_token
+from bson import ObjectId
 import os
 
 router = APIRouter()
@@ -77,6 +79,15 @@ def get_faculty_status(faculty_code: str):
     timetable = faculty.get("timetable", {})
     status, message, free_slots = get_status_from_timetable(faculty, timetable)
 
+    # Override with face-scan manual status
+    manual = faculty.get("manual_status")
+    if manual == "available":
+        status = "available"
+        message = "Checked in via face scan"
+    elif manual == "left":
+        status = "left"
+        message = "Checked out via face scan"
+
     return {
         "faculty_code": faculty_code,
         "faculty_name": faculty["name"],
@@ -128,15 +139,77 @@ def get_all_faculty_status():
         timetable = faculty.get("timetable", {})
         status, message, free_slots = get_status_from_timetable(faculty, timetable)
 
+        # Override with face-scan manual status
+        manual = faculty.get("manual_status")
+        if manual == "available":
+            status = "available"
+            message = "Checked in via face scan"
+        elif manual == "left":
+            status = "left"
+            message = "Checked out via face scan"
+
+        queue_count = db.doubts.count_documents({
+            "faculty_id": str(faculty["_id"]),
+            "status": "pending"
+        })
+
         result.append({
+            "_id": str(faculty["_id"]),
             "faculty_code": code,
             "faculty_name": faculty["name"],
             "subject": faculty.get("subject", ""),
             "cabin": faculty.get("cabin", ""),
+            "block": faculty.get("block", ""),
             "email": faculty.get("email", f"{code.lower()}@kiet.edu"),
             "status": status,
             "message": message,
             "free_slots_today": free_slots,
+            "queue_count": queue_count,
         })
 
     return {"faculty": result}
+
+
+@router.get("/my-schedule")
+def get_my_schedule(authorization: str = Header(...)):
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user or user["role"] != "faculty":
+        raise HTTPException(401, "Unauthorized")
+
+    faculty = db.faculty.find_one({"_id": ObjectId(user["id"])})
+    if not faculty:
+        raise HTTPException(404, "Faculty not found")
+
+    timetable = faculty.get("timetable", {})
+    day = get_current_day()
+    day_schedule = timetable.get(day, {})
+
+    # Build full schedule with all 7 periods
+    slots = []
+    for period in range(1, 8):
+        period_data = day_schedule.get(str(period), None)
+        time_info = TIME_SLOTS[period]
+        if period_data:
+            slots.append({
+                "period": period,
+                "start": time_info["start"],
+                "end": time_info["end"],
+                "type": "class",
+                "subject": period_data.get("subject", ""),
+                "section": period_data.get("section", ""),
+                "class_type": period_data.get("type", "theory"),
+            })
+        else:
+            slots.append({
+                "period": period,
+                "start": time_info["start"],
+                "end": time_info["end"],
+                "type": "free",
+            })
+
+    return {
+        "day": day,
+        "faculty_name": faculty["name"],
+        "slots": slots,
+    }

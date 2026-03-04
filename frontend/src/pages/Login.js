@@ -138,7 +138,7 @@ export default function Login({ setUser }) {
             {error && <div style={styles.error}>{error}</div>}
             <button style={{ ...styles.btn, opacity: loading ? 0.7 : 1 }}
               onClick={handleLogin} disabled={loading}>
-              {loading ? "Logging in..." : `Login as ${tab === "student" ? "Student" : "Faculty"}`}
+              {loading ? "Logging in..." : `Login as ${tab.charAt(0).toUpperCase() + tab.slice(1)}`}
             </button>
             <button onClick={() => { setMode("forgot"); setError(""); setSuccess(""); }}
               style={{ background: "none", border: "none", color: "#1a73e8", cursor: "pointer", fontSize: 13, marginTop: 4 }}>
@@ -223,7 +223,7 @@ export default function Login({ setUser }) {
 
 const styles = {
   page: { minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Segoe UI', sans-serif" },
-  card: { background: "#ffffff", borderRadius: 16, padding: 40, width: 420, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" },
+  card: { background: "#ffffff", borderRadius: 16, padding: 40, width: "min(420px, calc(100vw - 32px))", boxShadow: "0 4px 24px rgba(0,0,0,0.08)", boxSizing: "border-box" },
   logo: { display: "flex", alignItems: "center", gap: 14, marginBottom: 32 },
   logoIcon: { width: 48, height: 48, borderRadius: 12, background: "#1a73e8", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 800 },
   logoText: { fontSize: 22, fontWeight: 800, color: "#1a73e8", margin: 0 },

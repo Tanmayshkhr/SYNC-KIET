@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Header
+from pydantic import BaseModel
 from pymongo import MongoClient
 from utils.jwt import verify_token
 from utils.ai import cluster_doubts, calculate_wait_time, find_similar_doubts
@@ -28,6 +29,7 @@ async def submit_doubt(data: DoubtRequest, authorization: str = Header(...)):
         "topic": data.topic,
         "description": data.description,
         "faculty_id": data.faculty_id,
+        "duration": data.duration,
         "status": "pending",
         "created_at": datetime.utcnow(),
         "grouped": False,
@@ -161,20 +163,27 @@ async def complete_doubt(doubt_id: str, authorization: str = Header(...)):
     await _broadcast()
     return {"message": "Session completed"}
 
+class RejectRequest(BaseModel):
+    reason: str = "No reason provided"
+
 @router.put("/reject/{doubt_id}")
-async def reject_doubt(doubt_id: str, authorization: str = Header(...)):
+async def reject_doubt(doubt_id: str, data: RejectRequest = None, authorization: str = Header(...)):
     token = authorization.replace("Bearer ", "")
     user = verify_token(token)
     if not user or user["role"] != "faculty":
         raise HTTPException(401, "Unauthorized")
 
+    reason = data.reason if data else "No reason provided"
+
     db.doubts.update_one(
         {"_id": ObjectId(doubt_id)},
         {"$set": {
-            "status": "pending",
+            "status": "rejected",
             "rejected_at": datetime.utcnow(),
-            "priority": "urgent",
-            "reject_count": 1
+            "reject_reason": reason,
+            "faculty_message": f"Rejected: {reason}",
+            "faculty_id": user["id"],
+            "faculty_name": user.get("name", "")
         }}
     )
     db.faculty.update_one(
@@ -185,10 +194,11 @@ async def reject_doubt(doubt_id: str, authorization: str = Header(...)):
         "faculty_id": user["id"],
         "action": "rejected_session",
         "doubt_id": doubt_id,
+        "reason": reason,
         "timestamp": datetime.utcnow()
     })
     await _broadcast()
-    return {"message": "Session rejected, student re-queued as priority"}
+    return {"message": "Doubt rejected with reason"}
 
 @router.post("/send-message/{doubt_id}")
 async def send_message(doubt_id: str, data: MessageRequest, authorization: str = Header(...)):
@@ -263,3 +273,33 @@ async def group_doubts(data: dict, authorization: str = Header(...)):
     )
     await _broadcast()
     return {"message": f"Grouped {len(doubt_ids)} doubts", "cluster_id": cluster_id}
+
+
+@router.get("/faculty-history")
+def get_faculty_history(authorization: str = Header(...)):
+    """Get completed/rejected doubt history for faculty."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user or user["role"] != "faculty":
+        raise HTTPException(401, "Unauthorized")
+
+    doubts = list(db.doubts.find({
+        "faculty_id": user["id"],
+        "status": {"$in": ["completed", "rejected"]}
+    }).sort("_id", -1).limit(50))
+
+    for d in doubts:
+        d["_id"] = str(d["_id"])
+        d["created_at"] = str(d.get("created_at", ""))
+        d["completed_at"] = str(d.get("completed_at", ""))
+        d["accepted_at"] = str(d.get("accepted_at", ""))
+        d["rejected_at"] = str(d.get("rejected_at", ""))
+
+    total_completed = db.doubts.count_documents({"faculty_id": user["id"], "status": "completed"})
+    total_rejected = db.doubts.count_documents({"faculty_id": user["id"], "status": {"$in": ["rejected"]}})
+
+    return {
+        "history": doubts,
+        "total_completed": total_completed,
+        "total_rejected": total_rejected
+    }

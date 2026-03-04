@@ -82,6 +82,7 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted, darkMo
     description: "",
     faculty_id: faculty?.faculty_code || "",
   });
+  const [duration, setDuration] = useState("medium");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -90,6 +91,8 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted, darkMo
   const filteredTopics = topics.filter(t => t.toLowerCase().includes(topicSearch.toLowerCase()));
 
   const getFacultyId = async () => {
+    // Use the faculty _id directly from the all-faculty-status response
+    if (faculty?._id) return faculty._id;
     try {
       const res = await fetch(`${API}/auth/faculty/login`, {
         method: "POST",
@@ -127,7 +130,8 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted, darkMo
           subject: form.subject,
           topic: form.topic,
           description: form.description,
-          faculty_id: facultyId
+          faculty_id: facultyId,
+          duration: duration
         })
       });
       const data = await res.json();
@@ -194,7 +198,7 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted, darkMo
         <span style={{ fontWeight: 700, color: textColor }}>Submit Doubt</span>
       </div>
 
-      <div style={{ maxWidth: 560, margin: "40px auto", padding: "0 16px" }}>
+      <div className="responsive-form-container" style={{ maxWidth: 560, margin: "40px auto", padding: "0 16px" }}>
         {/* Faculty Info */}
         <div style={{ background: cardBg, borderRadius: 12, padding: 20, marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
@@ -268,6 +272,24 @@ export default function SubmitDoubt({ user, faculty, onBack, onSubmitted, darkMo
                   placeholder="Explain what you've tried and where you're stuck..."
                   rows={6}
                   style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: `1.5px solid ${borderColor}`, fontSize: 14, outline: "none", resize: "vertical", boxSizing: "border-box", background: cardBg, color: textColor }} />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: textColor, marginBottom: 8, display: "block" }}>
+                  Estimated Duration
+                </label>
+                <div style={{ display: "flex", gap: 10 }}>
+                  {[
+                    { value: "quick", label: "⚡ Quick", sub: "5-10 mins" },
+                    { value: "medium", label: "📖 Medium", sub: "15-20 mins" },
+                    { value: "long", label: "🔍 Long", sub: "30+ mins" }
+                  ].map(opt => (
+                    <div key={opt.value} onClick={() => setDuration(opt.value)}
+                      style={{ flex: 1, padding: "10px 8px", borderRadius: 10, border: `2px solid ${duration === opt.value ? "#1a73e8" : borderColor}`, background: duration === opt.value ? "#eff6ff" : cardBg, cursor: "pointer", textAlign: "center" }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: duration === opt.value ? "#1a73e8" : textColor }}>{opt.label}</div>
+                      <div style={{ fontSize: 11, color: subColor }}>{opt.sub}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
               {error && <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 12 }}>{error}</div>}
               <div style={{ display: "flex", gap: 10 }}>

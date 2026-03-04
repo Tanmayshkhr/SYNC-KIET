@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Optional
 
 class StudentSignup(BaseModel):
     name: str
@@ -36,6 +37,7 @@ class ForgotPassword(BaseModel):
 class SecuritySetup(BaseModel):
     security_question: str
     security_answer: str
+    new_password: Optional[str] = None
 
 class MessageRequest(BaseModel):
     message: str

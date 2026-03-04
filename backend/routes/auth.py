@@ -1,9 +1,7 @@
 from models.user import StudentSignup, StudentLogin, FacultySignup, FacultyLogin, ForgotPassword, SecuritySetup
-from models.user import StudentSignup, StudentLogin, FacultySignup, FacultyLogin, ForgotPassword
 from fastapi import APIRouter, HTTPException, Header
 from pymongo import MongoClient
 from bson import ObjectId
-from models.user import StudentSignup, StudentLogin, FacultySignup, FacultyLogin
 from utils.jwt import create_token, verify_token
 import bcrypt
 import os
@@ -79,7 +77,8 @@ def faculty_login(data: FacultyLogin):
         "role": "faculty",
         "name": faculty["name"]
     })
-    return {"token": token, "name": faculty["name"], "role": "faculty"}
+    return {"token": token, "name": faculty["name"], "role": "faculty",
+            "needs_security_setup": "security_question" not in faculty or not faculty.get("security_question") or not faculty.get("password_changed")}
 @router.post("/forgot-password/student")
 def student_forgot_password(data: ForgotPassword):
     student = db.students.find_one({"email": data.email})
@@ -137,15 +136,25 @@ def setup_security(data: SecuritySetup, authorization: str = Header(...)):
         bcrypt.gensalt()
     )
 
+    update_fields = {
+        "security_question": data.security_question,
+        "security_answer": hashed_answer,
+        "password_changed": True
+    }
+
+    # If new password provided, update it too
+    if data.new_password:
+        update_fields["password"] = bcrypt.hashpw(
+            data.new_password.encode("utf-8"),
+            bcrypt.gensalt()
+        )
+
     collection = db.students if user["role"] == "student" else db.faculty
     collection.update_one(
         {"_id": ObjectId(user["id"])},
-        {"$set": {
-            "security_question": data.security_question,
-            "security_answer": hashed_answer
-        }}
+        {"$set": update_fields}
     )
-    return {"message": "Security question set successfully"}
+    return {"message": "Security setup completed successfully"}
 
 @router.post("/admin/login")
 def admin_login(data: StudentLogin):

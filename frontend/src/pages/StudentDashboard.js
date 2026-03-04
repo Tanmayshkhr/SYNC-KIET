@@ -165,6 +165,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
   const [sortBy, setSortBy] = useState("default");
   const [showConfetti, setShowConfetti] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
+  const [notifDismissed, setNotifDismissed] = useState(localStorage.getItem("notifDismissed") === "true");
   const wsRef = useRef(null);
 
   const filteredFaculty = faculty
@@ -196,6 +197,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
       ws.onmessage = () => {
         fetchFaculty();
         fetchMyDoubts();
+        fetchAnnouncements();
       };
 
       ws.onclose = () => {
@@ -270,8 +272,8 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
             sendNotification("Session Complete", `Your doubt on ${newDoubt.topic} has been resolved.`);
             setShowConfetti(true);
             setTimeout(() => setShowConfetti(false), 3000);
-          } else if (newDoubt.status === "pending" && oldDoubt.status === "active") {
-            sendNotification("Session Rejected", `You've been re-queued as priority for ${newDoubt.topic}`);
+          } else if (newDoubt.status === "rejected") {
+            sendNotification("Doubt Rejected", `Your doubt on "${newDoubt.topic}" was rejected: ${newDoubt.reject_reason || "No reason provided"}`);
           }
         }
         // Notify when grouped
@@ -303,12 +305,12 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
       <StyleInjector />
       {showConfetti && <Confetti />}
       {/* Navbar */}
-      <div style={{ background: navBg, borderBottom: `1px solid ${borderColor}`, padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="responsive-navbar" style={{ background: navBg, borderBottom: `1px solid ${borderColor}`, padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
+        <div className="responsive-nav-brand" style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: BLUE, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 }}>P</div>
           <span style={{ fontWeight: 800, fontSize: 18, color: BLUE }}>PuchoKIET</span>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="responsive-nav-tabs" style={{ display: "flex", gap: 8 }}>
           {[["Home", "home"], ["My Doubts", "mydoubts"], ["Analytics", "analytics"]].map(([label, p]) => (
             <button key={p} onClick={() => setPage(p)}
               style={{ padding: "8px 16px", border: "none", borderRadius: 8, background: page === p ? BLUE : "none", color: page === p ? "#fff" : subColor, fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
@@ -316,9 +318,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
             </button>
           ))}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 13, color: subColor, fontWeight: 600 }}>{user.name}</span>
-          <button onClick={() => setDarkMode(!darkMode)}
+        <div className="responsive-nav-actions" style={{ display: "flex", alignItems: "center", gap: 12 }}>          <span style={{ fontSize: 13, color: subColor, fontWeight: 600 }}>{user.name}</span>          <button onClick={() => setDarkMode(!darkMode)}
             style={{ padding: "6px 12px", background: "transparent", border: `1px solid ${borderColor}`, borderRadius: 8, cursor: "pointer", fontSize: 16 }}>
             {darkMode ? "☀️" : "🌙"}
           </button>
@@ -326,7 +326,25 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
         </div>
       </div>
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: 32 }}>
+      <div className="responsive-content" style={{ maxWidth: 1100, margin: "0 auto", padding: 32 }}>
+        {/* Notification Permission Banner */}
+        {!notifDismissed && "Notification" in window && Notification.permission !== "granted" && (
+          <div style={{ background: "linear-gradient(135deg, #fef3c7, #fde68a)", border: "1px solid #fbbf24", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 20 }}>🔔</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>Enable Notifications</div>
+                <div style={{ fontSize: 12, color: "#a16207" }}>Get notified when your doubt is accepted or resolved</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { Notification.requestPermission(); setNotifDismissed(true); localStorage.setItem("notifDismissed", "true"); }}
+                style={{ padding: "6px 14px", background: "#f59e0b", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>Allow</button>
+              <button onClick={() => { setNotifDismissed(true); localStorage.setItem("notifDismissed", "true"); }}
+                style={{ padding: "6px 10px", background: "transparent", color: "#a16207", border: "none", cursor: "pointer", fontSize: 16 }}>✕</button>
+            </div>
+          </div>
+        )}
         {/* HOME PAGE */}
         {page === "home" && (
           <div className="page-content">
@@ -349,7 +367,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
             </div>
 
             {/* Search and Filters */}
-            <div style={{ background: cardBg, borderRadius: 12, padding: 16, marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <div className="responsive-filters" style={{ background: cardBg, borderRadius: 12, padding: 16, marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
               {/* Search */}
               <input
                 placeholder="🔍 Search faculty by name..."
@@ -394,7 +412,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
             </div>
 
             {loading ? (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+              <div className="responsive-grid-cards" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
                 {[1,2,3,4,5,6].map(i => <SkeletonCard key={i} cardBg={cardBg} borderColor={borderColor} />)}
               </div>
             ) : filteredFaculty.length === 0 ? (
@@ -402,7 +420,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
                 No faculty found matching your filters
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+              <div className="responsive-grid-cards" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
                 {filteredFaculty.map((f, i) => (
                   <div key={i} className="faculty-card" style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", border: f.status === "available" ? `2px solid ${BLUE}` : "2px solid transparent" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
@@ -467,7 +485,13 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
                       </div>
                       <div style={{ fontSize: 12, color: subColor }}>{d.subject} · {d.created_at?.slice(0, 10)}</div>
                       <div style={{ fontSize: 12, color: "#444", marginTop: 4 }}>{d.description?.slice(0, 60)}...</div>
-                      {d.faculty_message && (
+                      {d.status === "rejected" && d.reject_reason && (
+                        <div style={{ marginTop: 10, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px" }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#dc2626", marginBottom: 4 }}>❌ Rejection Reason</div>
+                          <div style={{ fontSize: 13, color: "#991b1b" }}>{d.reject_reason}</div>
+                        </div>
+                      )}
+                      {d.faculty_message && d.status !== "rejected" && (
                         <div style={{ marginTop: 10, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "10px 14px" }}>
                           <div style={{ fontSize: 11, fontWeight: 700, color: "#1a73e8", marginBottom: 4 }}>💬 Message from Faculty</div>
                           <div style={{ fontSize: 13, color: "#1e40af" }}>{d.faculty_message}</div>
@@ -489,57 +513,132 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
         )}
 
         {/* ANALYTICS PAGE */}
-        {page === "analytics" && (
+        {page === "analytics" && (() => {
+          const completed = myDoubts.filter(d => d.status === "completed");
+          const rejected = myDoubts.filter(d => d.status === "rejected");
+          const pending = myDoubts.filter(d => d.status === "pending");
+          const active = myDoubts.filter(d => d.status === "active");
+          const resolutionRate = myDoubts.length > 0 ? Math.round((completed.length / myDoubts.length) * 100) : 0;
+
+          // Subject breakdown
+          const subjectStats = Object.entries(myDoubts.reduce((acc, d) => {
+            if (!acc[d.subject]) acc[d.subject] = { total: 0, completed: 0, rejected: 0 };
+            acc[d.subject].total++;
+            if (d.status === "completed") acc[d.subject].completed++;
+            if (d.status === "rejected") acc[d.subject].rejected++;
+            return acc;
+          }, {})).sort((a, b) => b[1].total - a[1].total);
+
+          // Day of week breakdown
+          const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+          const dayBreakdown = myDoubts.reduce((acc, d) => {
+            if (d.created_at) {
+              const day = new Date(d.created_at).getDay();
+              acc[day] = (acc[day] || 0) + 1;
+            }
+            return acc;
+          }, {});
+          const maxDayCount = Math.max(...Object.values(dayBreakdown), 1);
+
+          return (
           <div className="page-content">
             <div style={{ marginBottom: 28 }}>
               <h2 style={{ fontSize: 24, fontWeight: 800, color: textColor, margin: 0 }}>Analytics</h2>
-              <p style={{ color: subColor, marginTop: 4 }}>Best times to visit faculty · Topic trends</p>
+              <p style={{ color: subColor, marginTop: 4 }}>Your doubt history insights & patterns</p>
             </div>
+
+            {myDoubts.length === 0 ? (
+              <div style={{ background: cardBg, borderRadius: 12, padding: 40, textAlign: "center", color: subColor }}>
+                No doubts submitted yet. Submit your first doubt to see analytics!
+              </div>
+            ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
               {/* Stats Row */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 14 }}>
+              <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14 }}>
                 {[
-                  { label: "Total Doubts", value: myDoubts.length, color: "#1a73e8" },
-                  { label: "Completed", value: myDoubts.filter(d => d.status === "completed").length, color: "#22c55e" },
-                  { label: "Pending", value: myDoubts.filter(d => d.status === "pending").length, color: "#f59e0b" },
-                  { label: "Active", value: myDoubts.filter(d => d.status === "active").length, color: "#1a73e8" },
-                  { label: "Rejected", value: myDoubts.filter(d => d.status === "rejected").length, color: "#ef4444" },
+                  { label: "Total Doubts", value: myDoubts.length, icon: "📝", color: "#1a73e8" },
+                  { label: "Resolved", value: completed.length, icon: "✅", color: "#22c55e" },
+                  { label: "Pending", value: pending.length, icon: "⏳", color: "#f59e0b" },
+                  { label: "Active", value: active.length, icon: "🔵", color: "#1a73e8" },
+                  { label: "Rejected", value: rejected.length, icon: "❌", color: "#ef4444" },
+                  { label: "Resolution Rate", value: `${resolutionRate}%`, icon: "📊", color: resolutionRate >= 70 ? "#22c55e" : resolutionRate >= 40 ? "#f59e0b" : "#ef4444" },
                 ].map((s, i) => (
-                  <div key={i} style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", textAlign: "center" }}>
-                    <div style={{ fontSize: 32, fontWeight: 800, color: s.color }}>{s.value}</div>
-                    <div style={{ fontSize: 12, color: subColor, marginTop: 4 }}>{s.label}</div>
+                  <div key={i} style={{ background: cardBg, borderRadius: 12, padding: 18, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", textAlign: "center" }}>
+                    <div style={{ fontSize: 20 }}>{s.icon}</div>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: s.color, marginTop: 4 }}>{s.value}</div>
+                    <div style={{ fontSize: 11, color: subColor, marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}
               </div>
 
-              {/* Most Asked Subjects */}
+              {/* Subject Breakdown with resolution bars */}
               <div style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-                <div style={{ fontWeight: 700, color: textColor, marginBottom: 16 }}>📚 Most Asked Subjects</div>
-                {Object.entries(myDoubts.reduce((acc, d) => {
-                  acc[d.subject] = (acc[d.subject] || 0) + 1;
-                  return acc;
-                }, {})).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([subject, count], i) => (
-                  <div key={i} style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, color: textColor, marginBottom: 16 }}>📚 Subject Breakdown</div>
+                {subjectStats.length === 0 ? (
+                  <div style={{ color: subColor, fontSize: 13 }}>No subjects yet</div>
+                ) : subjectStats.slice(0, 6).map(([subject, stats], i) => (
+                  <div key={i} style={{ marginBottom: 14 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
                       <span style={{ color: textColor, fontWeight: 600 }}>{subject}</span>
-                      <span style={{ color: subColor }}>{count} doubt{count > 1 ? "s" : ""}</span>
+                      <span style={{ color: subColor, fontSize: 11 }}>
+                        {stats.total} total · {stats.completed} resolved · {stats.rejected} rejected
+                      </span>
                     </div>
-                    <div style={{ background: borderColor, borderRadius: 20, height: 6 }}>
-                      <div style={{ height: "100%", borderRadius: 20, background: "linear-gradient(90deg, #1a73e8, #4f9ef8)", width: `${(count / myDoubts.length) * 100}%`, transition: "width 0.8s ease" }} />
+                    <div style={{ display: "flex", gap: 2, height: 8, borderRadius: 20, overflow: "hidden", background: borderColor }}>
+                      {stats.completed > 0 && (
+                        <div style={{ height: "100%", background: "#22c55e", width: `${(stats.completed / stats.total) * 100}%`, transition: "width 0.8s ease" }} />
+                      )}
+                      {stats.rejected > 0 && (
+                        <div style={{ height: "100%", background: "#ef4444", width: `${(stats.rejected / stats.total) * 100}%`, transition: "width 0.8s ease" }} />
+                      )}
+                      {(stats.total - stats.completed - stats.rejected) > 0 && (
+                        <div style={{ height: "100%", background: "#f59e0b", width: `${((stats.total - stats.completed - stats.rejected) / stats.total) * 100}%`, transition: "width 0.8s ease" }} />
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+                      <span style={{ fontSize: 10, color: "#22c55e" }}>● Resolved</span>
+                      <span style={{ fontSize: 10, color: "#ef4444" }}>● Rejected</span>
+                      <span style={{ fontSize: 10, color: "#f59e0b" }}>● Pending/Active</span>
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* Day of Week Pattern */}
+              <div style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontWeight: 700, color: textColor, marginBottom: 16 }}>📅 Day-wise Activity</div>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 120 }}>
+                  {dayNames.map((day, i) => {
+                    const count = dayBreakdown[i] || 0;
+                    const height = count > 0 ? Math.max((count / maxDayCount) * 100, 12) : 4;
+                    return (
+                      <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: count > 0 ? "#1a73e8" : subColor }}>{count || ""}</span>
+                        <div style={{
+                          width: "100%", maxWidth: 36, borderRadius: "6px 6px 0 0",
+                          height: `${height}%`,
+                          background: count > 0 ? "linear-gradient(180deg, #1a73e8, #4f9ef8)" : borderColor,
+                          transition: "height 0.6s ease"
+                        }} />
+                        <span style={{ fontSize: 10, color: subColor, fontWeight: 600 }}>{day}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Recent Activity */}
               <div style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
                 <div style={{ fontWeight: 700, color: textColor, marginBottom: 16 }}>🕒 Recent Activity</div>
-                {myDoubts.slice(0, 5).map((d, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${borderColor}` }}>
+                {myDoubts.slice(0, 8).map((d, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < 7 ? `1px solid ${borderColor}` : "none" }}>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: textColor }}>{d.topic}</div>
                       <div style={{ fontSize: 11, color: subColor }}>{d.subject} · {d.created_at?.slice(0, 10)}</div>
+                      {d.status === "rejected" && d.reject_reason && (
+                        <div style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>Reason: {d.reject_reason}</div>
+                      )}
                     </div>
                     <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, fontWeight: 700,
                       background: d.status === "completed" ? "#dcfce7" : d.status === "pending" ? "#fef3c7" : d.status === "active" ? "#eff6ff" : "#fee2e2",
@@ -550,8 +649,10 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
               </div>
 
             </div>
+            )}
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
@@ -564,6 +665,10 @@ const StatusBadge = ({ status }) => {
     lunch: { label: "Lunch Break", color: "#f59e0b", bg: "#fef3c7" },
     not_arrived: { label: "Not Arrived", color: "#94a3b8", bg: "#f1f5f9" },
     left: { label: "Left", color: "#ef4444", bg: "#fee2e2" },
+    pending: { label: "Pending", color: "#d97706", bg: "#fef3c7" },
+    active: { label: "Active", color: "#1a73e8", bg: "#eff6ff" },
+    completed: { label: "Completed", color: "#16a34a", bg: "#dcfce7" },
+    rejected: { label: "Rejected", color: "#dc2626", bg: "#fee2e2" },
   }[status] || { label: status, color: "#94a3b8", bg: "#f1f5f9" };
 
   return (

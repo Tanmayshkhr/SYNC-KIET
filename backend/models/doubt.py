@@ -5,3 +5,4 @@ class DoubtRequest(BaseModel):
     topic: str
     description: str
     faculty_id: str
+    duration: str = "medium"

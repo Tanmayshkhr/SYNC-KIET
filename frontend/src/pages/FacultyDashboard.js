@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import ToastContainer, { useToast } from "../components/Toast";
+import FaceScanner from "../components/FaceScanner";
 
 const API = "http://localhost:8000";
 const BLUE = "#1a73e8";
@@ -23,6 +25,7 @@ const LiveClock = ({ textColor, subColor, cardBg }) => {
 };
 
 export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode }) {
+  const { toasts, addToast } = useToast();
   const bg = darkMode ? "#0f172a" : "#f0f4f8";
   const cardBg = darkMode ? "#1e293b" : "#fff";
   const textColor = darkMode ? "#f1f5f9" : "#1a1a1a";
@@ -40,6 +43,15 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
   const [groupModal, setGroupModal] = useState(null);
   const [groupLoading, setGroupLoading] = useState(false);
   const [selectedForGroup, setSelectedForGroup] = useState({});
+  const [rejectPopup, setRejectPopup] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [history, setHistory] = useState([]);
+  const [historyStats, setHistoryStats] = useState({ total_completed: 0, total_rejected: 0 });
+  const [schedule, setSchedule] = useState({ day: "", slots: [] });
+  const [announcements, setAnnouncements] = useState([]);
+  const [notifDismissed, setNotifDismissed] = useState(localStorage.getItem("notifDismissed") === "true");
+  const [faceStatus, setFaceStatus] = useState({ face_registered: false, manual_status: null });
+  const [faceScanner, setFaceScanner] = useState(null); // null | "register" | "check_in" | "check_out"
   const wsRef = useRef(null);
 
   const sendNotification = (title, body) => {
@@ -50,6 +62,10 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
 
   useEffect(() => {
     fetchQueue();
+    fetchHistory();
+    fetchSchedule();
+    fetchAnnouncements();
+    fetchFaceStatus();
 
     const connectWS = () => {
       const ws = new WebSocket("ws://localhost:8000/ws");
@@ -59,6 +75,7 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
 
       ws.onmessage = () => {
         fetchQueue();
+        fetchAnnouncements();
       };
 
       ws.onclose = () => {
@@ -98,6 +115,28 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
     return () => clearInterval(t);
   }, [activeSession]);
 
+  const fetchAnnouncements = async () => {
+    try {
+      const res = await fetch(`${API}/admin/announcements`);
+      const data = await res.json();
+      setAnnouncements(data.announcements || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchFaceStatus = async () => {
+    try {
+      const res = await fetch(`${API}/face/status`, {
+        headers: { authorization: `Bearer ${user.token}` }
+      });
+      const data = await res.json();
+      setFaceStatus(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchQueue = async () => {
     try {
       const res = await fetch(`${API}/doubts/faculty-queue`, {
@@ -125,6 +164,31 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
     setLoading(false);
   };
 
+  const fetchHistory = async () => {
+    try {
+      const res = await fetch(`${API}/doubts/faculty-history`, {
+        headers: { authorization: `Bearer ${user.token}` }
+      });
+      const data = await res.json();
+      setHistory(data.history || []);
+      setHistoryStats({ total_completed: data.total_completed || 0, total_rejected: data.total_rejected || 0 });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchSchedule = async () => {
+    try {
+      const res = await fetch(`${API}/timetable/my-schedule`, {
+        headers: { authorization: `Bearer ${user.token}` }
+      });
+      const data = await res.json();
+      setSchedule({ day: data.day || "", slots: data.slots || [] });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const acceptDoubt = async (doubt, groupDoubts = null) => {
     try {
       if (groupDoubts && groupDoubts.length > 1) {
@@ -143,6 +207,7 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
         });
         setActiveSession(doubt);
       }
+      addToast("Doubt accepted — session started!", "success");
       fetchQueue();
     } catch (err) {
       console.error(err);
@@ -157,20 +222,25 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
         headers: { authorization: `Bearer ${user.token}` }
       });
       setActiveSession(null);
+      addToast("Session completed!", "success");
       fetchQueue();
     } catch (err) {
       console.error(err);
     }
   };
 
-const rejectDoubt = async (doubt) => {
+  const rejectDoubt = async (doubt, reason) => {
     try {
       const res = await fetch(`${API}/doubts/reject/${doubt._id}`, {
         method: "PUT",
-        headers: { authorization: `Bearer ${user.token}` }
+        headers: { authorization: `Bearer ${user.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason || "No reason provided" })
       });
       const data = await res.json();
       setActiveSession(null);
+      setRejectPopup(null);
+      setRejectReason("");
+      addToast("Doubt rejected", "info");
       setTimeout(() => fetchQueue(), 500);
     } catch (err) {
       console.error("Reject error:", err);
@@ -199,7 +269,7 @@ const rejectDoubt = async (doubt) => {
       });
       setMessagePopup(null);
       setCustomMessage("");
-      alert("Message sent to student!");
+      addToast("Message sent to student!", "success");
     } catch (err) {
       console.error(err);
     }
@@ -220,7 +290,7 @@ const rejectDoubt = async (doubt) => {
       setGroupModal(data);
     } catch (err) {
       console.error(err);
-      alert("Failed to find similar doubts");
+      addToast("Failed to find similar doubts", "error");
     }
     setGroupLoading(false);
   };
@@ -230,7 +300,7 @@ const rejectDoubt = async (doubt) => {
       .filter(d => selectedForGroup[d._id] !== undefined)
       .map(d => d._id);
     if (selectedIds.length < 2) {
-      alert("Select at least 2 doubts to group");
+      addToast("Select at least 2 doubts to group", "warning");
       return;
     }
     try {
@@ -295,22 +365,23 @@ const rejectDoubt = async (doubt) => {
 
   return (
     <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Segoe UI', sans-serif", transition: "background 0.3s" }}>
+      <ToastContainer toasts={toasts} />
       {/* Navbar */}
-      <div style={{ background: navBg, borderBottom: `1px solid ${borderColor}`, padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="responsive-navbar" style={{ background: navBg, borderBottom: `1px solid ${borderColor}`, padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
+        <div className="responsive-nav-brand" style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: BLUE, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 }}>P</div>
           <span style={{ fontWeight: 800, fontSize: 18, color: BLUE }}>PuchoKIET</span>
           <span style={{ fontSize: 11, padding: "3px 10px", background: "#eff6ff", color: BLUE, borderRadius: 10, fontWeight: 700 }}>FACULTY</span>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {[["Dashboard", "dashboard"], ["Timetable", "timetable"], ["Stats", "stats"]].map(([label, p]) => (
+        <div className="responsive-nav-tabs" style={{ display: "flex", gap: 8 }}>
+          {[["Dashboard", "dashboard"], ["History", "history"], ["Timetable", "timetable"], ["Stats", "stats"]].map(([label, p]) => (
             <button key={p} onClick={() => setPage(p)}
               style={{ padding: "8px 16px", border: "none", borderRadius: 8, background: page === p ? BLUE : "none", color: page === p ? "#fff" : subColor, fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
               {label}
             </button>
           ))}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="responsive-nav-actions" style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 13, color: subColor, fontWeight: 600 }}>{user.name}</span>
           <button onClick={() => setDarkMode(!darkMode)}
             style={{ padding: "6px 12px", background: "transparent", border: `1px solid ${borderColor}`, borderRadius: 8, cursor: "pointer", fontSize: 16 }}>
@@ -320,11 +391,82 @@ const rejectDoubt = async (doubt) => {
         </div>
       </div>
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: 32 }}>
+      <div className="responsive-content" style={{ maxWidth: 1100, margin: "0 auto", padding: 32 }}>
+        {/* Notification Permission Banner */}
+        {!notifDismissed && "Notification" in window && Notification.permission !== "granted" && (
+          <div style={{ background: "linear-gradient(135deg, #fef3c7, #fde68a)", border: "1px solid #fbbf24", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 20 }}>🔔</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>Enable Notifications</div>
+                <div style={{ fontSize: 12, color: "#a16207" }}>Get notified when a student submits a doubt</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { Notification.requestPermission(); setNotifDismissed(true); localStorage.setItem("notifDismissed", "true"); }}
+                style={{ padding: "6px 14px", background: "#f59e0b", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>Allow</button>
+              <button onClick={() => { setNotifDismissed(true); localStorage.setItem("notifDismissed", "true"); }}
+                style={{ padding: "6px 10px", background: "transparent", color: "#a16207", border: "none", cursor: "pointer", fontSize: 16 }}>✕</button>
+            </div>
+          </div>
+        )}
         {page === "dashboard" && (
           <>
+            {announcements.length > 0 && (
+              <div style={{
+                background: "linear-gradient(135deg, #1a73e8, #4f9ef8)",
+                borderRadius: 12, padding: "12px 16px", marginBottom: 16,
+                display: "flex", alignItems: "center", gap: 10
+              }}>
+                <span style={{ fontSize: 18 }}>📢</span>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#fff" }}>ANNOUNCEMENT</div>
+                  <div style={{ fontSize: 13, color: "#bfdbfe" }}>{announcements[0].message}</div>
+                </div>
+              </div>
+            )}
+            {/* Face Scan Card */}
+            <div style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: faceStatus.manual_status === "available" ? "#dcfce7" : faceStatus.manual_status === "left" ? "#fee2e2" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+                  {faceStatus.manual_status === "available" ? "🟢" : faceStatus.manual_status === "left" ? "🔴" : "📷"}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, color: textColor, fontSize: 14 }}>
+                    {!faceStatus.face_registered ? "Face Not Registered" : faceStatus.manual_status === "available" ? "Checked In" : faceStatus.manual_status === "left" ? "Checked Out" : "Not Scanned Today"}
+                  </div>
+                  <div style={{ fontSize: 11, color: subColor }}>
+                    {!faceStatus.face_registered ? "Register to enable face check-in/out" : faceStatus.last_scan_at ? `Last scan: ${faceStatus.last_scan_at.slice(0, 16).replace("T", " ")}` : "Scan your face to update status"}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {!faceStatus.face_registered ? (
+                  <button onClick={() => setFaceScanner("register")} style={{ padding: "8px 16px", borderRadius: 8, background: BLUE, color: "#fff", border: "none", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                    📷 Register Face
+                  </button>
+                ) : (
+                  <>
+                    {faceStatus.manual_status !== "available" && (
+                      <button onClick={() => setFaceScanner("check_in")} style={{ padding: "8px 16px", borderRadius: 8, background: "#22c55e", color: "#fff", border: "none", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                        🟢 Check In
+                      </button>
+                    )}
+                    {faceStatus.manual_status === "available" && (
+                      <button onClick={() => setFaceScanner("check_out")} style={{ padding: "8px 16px", borderRadius: 8, background: "#ef4444", color: "#fff", border: "none", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                        🔴 Check Out
+                      </button>
+                    )}
+                    <button onClick={() => setFaceScanner("register")} style={{ padding: "8px 16px", borderRadius: 8, background: darkMode ? "#334155" : "#f1f5f9", color: subColor, border: "none", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
+                      Re-register
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Stats */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16, marginBottom: 28 }}>
+            <div className="responsive-grid-5col" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16, marginBottom: 28 }}>
               {[
                 ["Queue", queue.length, "#f59e0b"],
                 ["Active Session", activeSession ? "1" : "0", BLUE],
@@ -339,7 +481,7 @@ const rejectDoubt = async (doubt) => {
               <LiveClock textColor={textColor} subColor={subColor} cardBg={cardBg} />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            <div className="responsive-grid-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
               {/* Active Session */}
               <div style={{ background: cardBg, borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
                 <div style={{ fontWeight: 700, fontSize: 15, color: textColor, marginBottom: 16 }}>Active Session</div>
@@ -375,7 +517,7 @@ const rejectDoubt = async (doubt) => {
                         style={{ flex: 1, padding: "12px 0", background: "#10b981", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
                         Complete
                       </button>
-                      <button onClick={() => rejectDoubt(activeSession)}
+                      <button onClick={() => setRejectPopup(activeSession)}
                         style={{ padding: "12px 16px", background: "#fee2e2", color: "#ef4444", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
                         Reject
                       </button>
@@ -452,7 +594,7 @@ const rejectDoubt = async (doubt) => {
                                     style={{ flex: 1, padding: "8px 0", background: BLUE, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
                                     Accept Group Session
                                   </button>
-                                  <button onClick={() => rejectDoubt(groupDoubts[0])}
+                                  <button onClick={() => setRejectPopup(groupDoubts[0])}
                                     style={{ padding: "8px 12px", background: "#fee2e2", color: "#ef4444", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
                                     Reject
                                   </button>
@@ -480,7 +622,18 @@ const rejectDoubt = async (doubt) => {
                                       </span>
                                     )}
                                   </div>
-                                  <div style={{ fontSize: 12, color: subColor, marginTop: 2 }}>{d.topic}</div>
+                                  <div style={{ fontSize: 12, color: subColor, marginTop: 2 }}>
+                                    {d.topic}
+                                    {d.duration && (
+                                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, marginLeft: 6,
+                                        background: d.duration === "quick" ? "#dcfce7" : d.duration === "long" ? "#fee2e2" : "#fef3c7",
+                                        color: d.duration === "quick" ? "#16a34a" : d.duration === "long" ? "#ef4444" : "#d97706",
+                                        fontWeight: 600
+                                      }}>
+                                        {d.duration === "quick" ? "⚡ 5-10m" : d.duration === "long" ? "🔍 30+m" : "📖 15-20m"}
+                                      </span>
+                                    )}
+                                  </div>
                                   <div style={{ fontSize: 11, color: "#888" }}>{d.subject}</div>
                                 </div>
                               </div>
@@ -494,7 +647,7 @@ const rejectDoubt = async (doubt) => {
                                     style={{ flex: 1, padding: "8px 0", background: d.priority === "urgent" ? "#ef4444" : BLUE, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
                                     {d.priority === "urgent" ? "Accept (Priority)" : "Accept"}
                                   </button>
-                                  <button onClick={() => rejectDoubt(d)}
+                                  <button onClick={() => setRejectPopup(d)}
                                     style={{ padding: "8px 12px", background: "#fee2e2", color: "#ef4444", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
                                     Reject
                                   </button>
@@ -512,18 +665,101 @@ const rejectDoubt = async (doubt) => {
           </>
         )}
 
-        {page === "timetable" && (
-          <div style={{ background: cardBg, borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 20, color: textColor }}>Today's Timetable</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
-              {["9:10", "10:00", "10:50", "11:40", "Lunch", "2:20", "3:10", "4:00"].map((time, i) => (
-                <div key={i} style={{ background: darkMode ? "#334155" : "#f0f4f8", borderRadius: 8, padding: 12, textAlign: "center" }}>
-                  <div style={{ fontSize: 11, color: subColor, marginBottom: 4 }}>{time}</div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: textColor }}>
-                    {i === 4 ? "Lunch" : "Free"}
-                  </div>
+        {page === "history" && (
+          <>
+            <div style={{ marginBottom: 28 }}>
+              <h2 style={{ fontSize: 24, fontWeight: 800, color: textColor, margin: 0 }}>Doubt History</h2>
+              <p style={{ color: subColor, marginTop: 4 }}>Your past resolved sessions</p>
+            </div>
+            <div className="responsive-grid-3col" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 20 }}>
+              {[
+                { label: "Total Resolved", value: historyStats.total_completed, color: "#22c55e", icon: "\u2705" },
+                { label: "Rejected", value: historyStats.total_rejected, color: "#ef4444", icon: "\u274c" },
+                { label: "Total Sessions", value: historyStats.total_completed + historyStats.total_rejected, color: BLUE, icon: "\ud83d\udcca" },
+              ].map((s, i) => (
+                <div key={i} style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>{s.icon}</div>
+                  <div style={{ fontSize: 32, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  <div style={{ fontSize: 12, color: subColor, marginTop: 4 }}>{s.label}</div>
                 </div>
               ))}
+            </div>
+            <div style={{ background: cardBg, borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+              {history.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 40, color: subColor }}>No past sessions yet</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {history.map((d, i) => (
+                    <div key={d._id} style={{
+                      border: `1px solid ${borderColor}`, borderRadius: 10, padding: 14,
+                      background: cardBg, display: "flex", justifyContent: "space-between", alignItems: "center"
+                    }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: textColor, fontSize: 14 }}>{d.student_name}</div>
+                        <div style={{ fontSize: 12, color: subColor, marginTop: 2 }}>
+                          {d.topic} \u00b7 {d.subject}
+                          {d.duration && (
+                            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, marginLeft: 6,
+                              background: d.duration === "quick" ? "#dcfce7" : d.duration === "long" ? "#fee2e2" : "#fef3c7",
+                              color: d.duration === "quick" ? "#16a34a" : d.duration === "long" ? "#ef4444" : "#d97706",
+                              fontWeight: 600
+                            }}>
+                              {d.duration === "quick" ? "\u26a1 5-10m" : d.duration === "long" ? "\ud83d\udd0d 30+m" : "\ud83d\udcd6 15-20m"}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                          {d.completed_at ? new Date(d.completed_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}
+                          {d.grouped && <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 6px", background: "#ede9fe", color: "#7c3aed", borderRadius: 8, fontWeight: 700 }}>\ud83e\udd1d GROUP</span>}
+                        </div>
+                      </div>
+                      <span style={{
+                        padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700,
+                        background: d.status === "completed" ? "#d1fae5" : "#fee2e2",
+                        color: d.status === "completed" ? "#059669" : "#ef4444"
+                      }}>
+                        {d.status === "completed" ? "\u2705 Resolved" : "\u274c Rejected"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {page === "timetable" && (
+          <div style={{ background: cardBg, borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: 18, color: textColor }}>Today's Timetable</div>
+              <span style={{ fontSize: 13, color: subColor, background: darkMode ? "#334155" : "#eff6ff", padding: "4px 12px", borderRadius: 8 }}>{schedule.day || "—"}</span>
+            </div>
+            <div className="responsive-grid-cards" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+              {schedule.slots.map((slot, i) => {
+                const isClass = slot.type === "class";
+                const bgColor = isClass ? (darkMode ? "#1e3a5f" : "#eff6ff") : (darkMode ? "#334155" : "#f0f4f8");
+                const borderStyle = isClass ? `2px solid ${BLUE}` : `1px solid ${borderColor}`;
+                return [
+                  // Insert lunch after period 4 (index 3)
+                  i === 4 && (
+                    <div key="lunch" style={{ background: darkMode ? "#44403c" : "#fef3c7", border: "1px solid #fbbf24", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <div style={{ fontSize: 12, color: subColor, marginBottom: 4 }}>12:30 – 14:20</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b" }}>🍽 Lunch</div>
+                    </div>
+                  ),
+                  <div key={i} style={{ background: bgColor, border: borderStyle, borderRadius: 10, padding: 14, textAlign: "center" }}>
+                    <div style={{ fontSize: 12, color: subColor, marginBottom: 4 }}>{slot.start} – {slot.end}</div>
+                    {isClass ? (
+                      <>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: BLUE }}>{slot.subject}</div>
+                        <div style={{ fontSize: 10, color: subColor, marginTop: 2 }}>{slot.section} · {slot.class_type}</div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#22c55e" }}>Free</div>
+                    )}
+                  </div>
+                ];
+              })}
             </div>
           </div>
         )}
@@ -537,7 +773,7 @@ const rejectDoubt = async (doubt) => {
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 14 }}>
                 {[
-                  { label: "Total Resolved", value: queue.filter ? 0 : 0, color: "#22c55e", icon: "✅" },
+                  { label: "Total Resolved", value: historyStats.total_completed, color: "#22c55e", icon: "✅" },
                   { label: "Pending Queue", value: queue.length, color: "#f59e0b", icon: "⏳" },
                   { label: "Group Sessions", value: queue.filter(d => d.grouped).length, color: "#8b5cf6", icon: "🤝" },
                   { label: "Urgent Doubts", value: queue.filter(d => d.priority === "urgent").length, color: "#ef4444", icon: "🚨" },
@@ -577,7 +813,7 @@ const rejectDoubt = async (doubt) => {
       {/* Message Popup */}
       {messagePopup && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div style={{ background: cardBg, borderRadius: 16, padding: 28, width: 420, boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+          <div className="responsive-modal" style={{ background: cardBg, borderRadius: 16, padding: 28, width: 420, boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6, color: textColor }}>💬 Send Message</div>
             <div style={{ fontSize: 13, color: subColor, marginBottom: 16 }}>To: {messagePopup.student_name}</div>
 
@@ -613,10 +849,71 @@ const rejectDoubt = async (doubt) => {
         </div>
       )}
 
+      {/* Reject Reason Modal */}
+      {rejectPopup && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div className="responsive-modal" style={{ background: cardBg, borderRadius: 16, padding: 28, width: 420, boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6, color: "#ef4444" }}>❌ Reject Doubt</div>
+            <div style={{ fontSize: 13, color: subColor, marginBottom: 16 }}>
+              Student: <b style={{ color: textColor }}>{rejectPopup.student_name}</b> · {rejectPopup.topic}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+              {[
+                "Topic not in my subject area",
+                "Please refer to class notes first",
+                "Duplicate doubt — already resolved",
+                "Come during office hours instead",
+                "Not enough detail — please resubmit with more info"
+              ].map((reason, i) => (
+                <button key={i} onClick={() => setRejectReason(reason)}
+                  style={{
+                    padding: "10px 14px",
+                    background: rejectReason === reason ? (darkMode ? "#451a1a" : "#fef2f2") : (darkMode ? "#334155" : "#f0f4f8"),
+                    border: rejectReason === reason ? "1.5px solid #ef4444" : `1px solid ${borderColor}`,
+                    borderRadius: 8, textAlign: "left", cursor: "pointer", fontSize: 13, color: textColor, fontWeight: 500
+                  }}>
+                  {reason}
+                </button>
+              ))}
+            </div>
+
+            <textarea
+              placeholder="Or type a custom reason (max 50 words)..."
+              value={rejectReason}
+              onChange={e => {
+                const words = e.target.value.split(/\s+/).filter(Boolean);
+                if (words.length <= 50) setRejectReason(e.target.value);
+              }}
+              rows={2}
+              style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: `1.5px solid ${borderColor}`, fontSize: 13, outline: "none", boxSizing: "border-box", marginBottom: 4, background: cardBg, color: textColor, resize: "none", fontFamily: "inherit" }}
+            />
+            <div style={{ fontSize: 11, color: subColor, marginBottom: 12, textAlign: "right" }}>
+              {rejectReason.split(/\s+/).filter(Boolean).length}/50 words
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => rejectDoubt(rejectPopup, rejectReason)}
+                disabled={!rejectReason.trim()}
+                style={{
+                  flex: 1, padding: "11px 0", background: rejectReason.trim() ? "#ef4444" : "#fca5a5",
+                  color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: rejectReason.trim() ? "pointer" : "not-allowed", fontSize: 14
+                }}>
+                Reject with Reason
+              </button>
+              <button onClick={() => { setRejectPopup(null); setRejectReason(""); }}
+                style={{ padding: "11px 16px", background: darkMode ? "#334155" : "#f0f4f8", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", color: subColor }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Group Similar Modal */}
       {groupModal && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div style={{ background: cardBg, borderRadius: 16, padding: 28, width: 520, maxHeight: "80vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+          <div className="responsive-modal" style={{ background: cardBg, borderRadius: 16, padding: 28, width: 520, maxHeight: "80vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <div style={{ fontWeight: 700, fontSize: 18, color: textColor }}>🔍 Similar Doubts Found</div>
               <button onClick={() => { setGroupModal(null); setSelectedForGroup({}); }}
@@ -704,6 +1001,27 @@ const rejectDoubt = async (doubt) => {
             )}
           </div>
         </div>
+      )}
+
+      {/* Face Scanner Modal */}
+      {faceScanner && (
+        <FaceScanner
+          user={user}
+          action={faceScanner}
+          darkMode={darkMode}
+          onClose={() => setFaceScanner(null)}
+          onComplete={(data) => {
+            setFaceScanner(null);
+            fetchFaceStatus();
+            if (data.action === "check_in") {
+              addToast("Checked in! Status: Available", "success");
+            } else if (data.action === "check_out") {
+              addToast("Checked out! Status: Left", "success");
+            } else {
+              addToast("Face registered successfully!", "success");
+            }
+          }}
+        />
       )}
     </div>
   );

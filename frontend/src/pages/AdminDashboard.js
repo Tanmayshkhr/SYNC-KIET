@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import ToastContainer, { useToast } from "../components/Toast";
 
 const API = "http://localhost:8000";
 const BLUE = "#1a73e8";
@@ -12,6 +13,7 @@ const StatCard = ({ title, value, color = BLUE, icon, cardBg, subColor }) => (
 );
 
 export default function AdminDashboard({ user, setUser, darkMode, setDarkMode }) {
+  const { toasts, addToast } = useToast();
   const bg = darkMode ? "#0f172a" : "#f0f4f8";
   const cardBg = darkMode ? "#1e293b" : "#fff";
   const textColor = darkMode ? "#f1f5f9" : "#1a1a1a";
@@ -83,14 +85,14 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
   };
 
   const handleResetPassword = async () => {
-    if (!resetEmail || !resetPassword) return alert("Fill all fields!");
+    if (!resetEmail || !resetPassword) return addToast("Fill all fields!", "warning");
     const res = await fetch(`${API}/admin/reset-password`, {
       method: "PUT",
       headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify({ email: resetEmail, new_password: resetPassword, role: resetRole })
     });
     const data = await res.json();
-    alert(data.message || "Done!");
+    addToast(data.message || "Done!", "success");
     setResetEmail(""); setResetPassword("");
   };
 
@@ -106,14 +108,14 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
   };
 
   const handleAnnouncement = async () => {
-    if (!announcement) return alert("Type a message!");
+    if (!announcement) return addToast("Type a message!", "warning");
     const res = await fetch(`${API}/admin/announcement`, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify({ message: announcement, target: announcementTarget })
     });
     const data = await res.json();
-    alert(data.message);
+    addToast(data.message, "success");
     setAnnouncement("");
     fetchAnnouncements();
   };
@@ -122,20 +124,23 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
 
   return (
     <div style={{ minHeight: "100vh", background: bg, fontFamily: "Inter, sans-serif", transition: "background 0.3s" }}>
+      <ToastContainer toasts={toasts} />
       {/* Navbar */}
-      <div style={{ background: navBg, padding: "0 32px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div className="responsive-navbar" style={{ background: navBg, padding: "0 32px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+        <div className="responsive-nav-brand" style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 32, height: 32, background: BLUE, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800 }}>P</div>
           <span style={{ fontWeight: 800, fontSize: 18, color: BLUE }}>PuchoKIET</span>
           <span style={{ fontSize: 11, background: "#fee2e2", color: "#ef4444", borderRadius: 6, padding: "2px 8px", fontWeight: 700 }}>ADMIN</span>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="responsive-nav-tabs" style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {["overview", "faculty", "students", "doubts", "announcements", "settings"].map(p => (
             <button key={p} onClick={() => setPage(p)}
               style={{ padding: "6px 14px", background: page === p ? BLUE : "transparent", color: page === p ? "#fff" : subColor, border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 13, textTransform: "capitalize" }}>
               {p}
             </button>
           ))}
+          </div>
+          <div className="responsive-nav-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button onClick={() => setDarkMode(!darkMode)}
             style={{ padding: "6px 12px", background: "transparent", border: `1px solid ${borderColor}`, borderRadius: 8, cursor: "pointer", fontSize: 16 }}>
             {darkMode ? "☀️" : "🌙"}
@@ -147,13 +152,13 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
         </div>
       </div>
 
-      <div style={{ padding: 32 }}>
+      <div className="responsive-content" style={{ padding: 32 }}>
 
         {/* OVERVIEW */}
         {page === "overview" && (
           <>
             <h2 style={{ margin: "0 0 24px", fontWeight: 800, color: textColor }}>Overview</h2>
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+            <div className="responsive-stat-row" style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
               <StatCard title="Total Students" value={stats.total_students} icon="👨‍🎓" cardBg={cardBg} subColor={subColor} />
               <StatCard title="Total Faculty" value={stats.total_faculty} icon="👨‍🏫" cardBg={cardBg} subColor={subColor} />
               <StatCard title="Doubts Today" value={stats.doubts_today} icon="📋" color="#f59e0b" cardBg={cardBg} subColor={subColor} />
@@ -185,7 +190,7 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
             <h2 style={{ margin: "0 0 24px", fontWeight: 800, color: textColor }}>Faculty ({faculty.length})</h2>
             <input placeholder="🔍 Search faculty..." value={search} onChange={e => setSearch(e.target.value)}
               style={{ width: "100%", padding: "12px 16px", borderRadius: 10, border: `1.5px solid ${borderColor}`, fontSize: 14, outline: "none", marginBottom: 16, boxSizing: "border-box", background: cardBg, color: textColor }} />
-            <div style={{ background: cardBg, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+            <div className="responsive-table-wrap" style={{ background: cardBg, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: darkMode ? "#334155" : "#f8f9fa" }}>
@@ -217,7 +222,7 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
             <h2 style={{ margin: "0 0 24px", fontWeight: 800, color: textColor }}>Students ({students.length})</h2>
             <input placeholder="🔍 Search students..." value={search} onChange={e => setSearch(e.target.value)}
               style={{ width: "100%", padding: "12px 16px", borderRadius: 10, border: `1.5px solid ${borderColor}`, fontSize: 14, outline: "none", marginBottom: 16, boxSizing: "border-box", background: cardBg, color: textColor }} />
-            <div style={{ background: cardBg, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+            <div className="responsive-table-wrap" style={{ background: cardBg, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: darkMode ? "#334155" : "#f8f9fa" }}>
@@ -251,7 +256,7 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
               style={{ width: "100%", padding: "12px 16px", borderRadius: 10, border: `1.5px solid ${borderColor}`, fontSize: 14, outline: "none", marginBottom: 16, boxSizing: "border-box", background: cardBg, color: textColor }} />
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {doubts.filter(d => d.topic?.toLowerCase().includes(search.toLowerCase()) || d.student_name?.toLowerCase().includes(search.toLowerCase())).map((d, i) => (
-                <div key={i} style={{ background: cardBg, borderRadius: 10, padding: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div key={i} className="responsive-doubt-card" style={{ background: cardBg, borderRadius: 10, padding: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: textColor }}>{d.student_name} → {d.topic}</div>
                     <div style={{ fontSize: 12, color: subColor, marginTop: 2 }}>{d.subject} · {d.created_at?.slice(0, 10)}</div>

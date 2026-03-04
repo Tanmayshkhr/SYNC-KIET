@@ -89,7 +89,7 @@ def force_complete(doubt_id: str, authorization: str = Header(...)):
     return {"message": "Doubt force completed"}
 
 @router.post("/announcement")
-def send_announcement(data: dict, authorization: str = Header(...)):
+async def send_announcement(data: dict, authorization: str = Header(...)):
     verify_admin(authorization)
     db.announcements.insert_one({
         "message": data.get("message"),
@@ -97,6 +97,11 @@ def send_announcement(data: dict, authorization: str = Header(...)):
         "created_at": datetime.utcnow(),
         "created_by": "admin"
     })
+    try:
+        from main import manager
+        await manager.broadcast("announcement")
+    except Exception as e:
+        print("Broadcast error:", e)
     return {"message": "Announcement sent"}
 
 @router.get("/announcements")
