@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import SubmitDoubt from "./SubmitDoubt";
 
 const styles = `
@@ -37,6 +37,13 @@ const styles = `
   @keyframes confettiFall {
     0% { transform: translateY(0) rotate(0deg); opacity: 1; }
     100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+  }
+  @keyframes pageIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .page-content {
+    animation: pageIn 0.3s ease both;
   }
 `;
 
@@ -157,6 +164,8 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
   const [availFilter, setAvailFilter] = useState("");
   const [sortBy, setSortBy] = useState("default");
   const [showConfetti, setShowConfetti] = useState(false);
+  const [announcements, setAnnouncements] = useState([]);
+  const wsRef = useRef(null);
 
   const filteredFaculty = faculty
     .filter(f => f.faculty_name?.toLowerCase().includes(search.toLowerCase()))
@@ -176,11 +185,35 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
     requestNotificationPermission();
     fetchFaculty();
     fetchMyDoubts();
-    const interval = setInterval(() => {
-      fetchMyDoubts();
-      fetchFaculty();
-    }, 15000);
-    return () => clearInterval(interval);
+    fetchAnnouncements();
+
+    const connectWS = () => {
+      const ws = new WebSocket("ws://localhost:8000/ws");
+      wsRef.current = ws;
+
+      ws.onopen = () => console.log("WebSocket connected");
+
+      ws.onmessage = () => {
+        fetchFaculty();
+        fetchMyDoubts();
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket closed, reconnecting in 2s...");
+        setTimeout(connectWS, 2000);
+      };
+
+      ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        ws.close();
+      };
+    };
+
+    connectWS();
+
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+    };
   }, []);
 
   const requestNotificationPermission = async () => {
@@ -207,6 +240,16 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
       console.error(err);
     }
     setLoading(false);
+  };
+
+  const fetchAnnouncements = async () => {
+    try {
+      const res = await fetch(`${API}/admin/announcements`);
+      const data = await res.json();
+      setAnnouncements(data.announcements || []);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const fetchMyDoubts = async () => {
@@ -282,7 +325,20 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: 32 }}>
         {/* HOME PAGE */}
         {page === "home" && (
-          <>
+          <div className="page-content">
+            {announcements.length > 0 && (
+              <div style={{
+                background: "linear-gradient(135deg, #1a73e8, #4f9ef8)",
+                borderRadius: 12, padding: "12px 16px", marginBottom: 16,
+                display: "flex", alignItems: "center", gap: 10
+              }}>
+                <span style={{ fontSize: 18 }}>📢</span>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#fff" }}>ANNOUNCEMENT</div>
+                  <div style={{ fontSize: 13, color: "#bfdbfe" }}>{announcements[0].message}</div>
+                </div>
+              </div>
+            )}
             <div style={{ marginBottom: 28 }}>
               <h2 style={{ fontSize: 24, fontWeight: 800, color: textColor, margin: 0 }}>Find Faculty</h2>
               <p style={{ color: subColor, marginTop: 4 }}>Live availability · AI-powered queue · Smart grouping</p>
@@ -380,12 +436,12 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
                 ))}
               </div>
             )}
-          </>
+          </div>
         )}
 
         {/* MY DOUBTS PAGE */}
         {page === "mydoubts" && (
-          <>
+          <div className="page-content">
             <div style={{ marginBottom: 28 }}>
               <h2 style={{ fontSize: 24, fontWeight: 800, color: textColor, margin: 0 }}>My Doubts</h2>
               <p style={{ color: subColor, marginTop: 4 }}>Track your doubt sessions and queue position</p>
@@ -420,12 +476,12 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
                 ))}
               </div>
             )}
-          </>
+          </div>
         )}
 
         {/* ANALYTICS PAGE */}
         {page === "analytics" && (
-          <>
+          <div className="page-content">
             <div style={{ marginBottom: 28 }}>
               <h2 style={{ fontSize: 24, fontWeight: 800, color: textColor, margin: 0 }}>Analytics</h2>
               <p style={{ color: subColor, marginTop: 4 }}>Best times to visit faculty · Topic trends</p>
@@ -485,7 +541,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
               </div>
 
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

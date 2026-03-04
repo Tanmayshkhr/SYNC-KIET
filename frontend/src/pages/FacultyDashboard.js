@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const API = "http://localhost:8000";
 const BLUE = "#1a73e8";
@@ -37,6 +37,7 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
   const [page, setPage] = useState("dashboard");
   const [messagePopup, setMessagePopup] = useState(null);
   const [customMessage, setCustomMessage] = useState("");
+  const wsRef = useRef(null);
 
   const sendNotification = (title, body) => {
     if ("Notification" in window && Notification.permission === "granted") {
@@ -46,8 +47,33 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
 
   useEffect(() => {
     fetchQueue();
-    const interval = setInterval(fetchQueue, 10000);
-    return () => clearInterval(interval);
+
+    const connectWS = () => {
+      const ws = new WebSocket("ws://localhost:8000/ws");
+      wsRef.current = ws;
+
+      ws.onopen = () => console.log("WebSocket connected");
+
+      ws.onmessage = () => {
+        fetchQueue();
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket closed, reconnecting in 2s...");
+        setTimeout(connectWS, 2000);
+      };
+
+      ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        ws.close();
+      };
+    };
+
+    connectWS();
+
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+    };
   }, []);
 
   useEffect(() => {
@@ -141,7 +167,6 @@ const rejectDoubt = async (doubt) => {
         headers: { authorization: `Bearer ${user.token}` }
       });
       const data = await res.json();
-      console.log("Reject response:", data);
       setActiveSession(null);
       setTimeout(() => fetchQueue(), 500);
     } catch (err) {

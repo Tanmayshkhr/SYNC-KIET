@@ -8,6 +8,7 @@ from models.user import MessageRequest
 from datetime import datetime
 from bson import ObjectId
 import os
+import asyncio
 
 router = APIRouter()
 client = MongoClient(os.getenv("MONGO_URL", "mongodb://localhost:27017"))
@@ -69,6 +70,7 @@ def submit_doubt(data: DoubtRequest, authorization: str = Header(...)):
 
     wait_time = calculate_wait_time(data.faculty_id, queue_position, db)
 
+    _broadcast()
     return {
         "message": "Doubt submitted successfully",
         "doubt_id": doubt_id,
@@ -78,6 +80,17 @@ def submit_doubt(data: DoubtRequest, authorization: str = Header(...)):
         "next_free_slot": timetable_status["free_slots_today"][0] if timetable_status and timetable_status["free_slots_today"] else None,
         "cluster_info": cluster_result
     }
+
+@router.on_event("startup")
+async def _noop(): pass  # ensures router can import manager lazily
+
+def _broadcast():
+    from main import manager
+    try:
+        loop = asyncio.get_event_loop()
+        loop.create_task(manager.broadcast("refresh"))
+    except Exception:
+        pass
 
 @router.get("/my-doubts")
 def get_my_doubts(authorization: str = Header(...)):
@@ -127,6 +140,7 @@ def accept_doubt(doubt_id: str, authorization: str = Header(...)):
         {"_id": ObjectId(user["id"])},
         {"$set": {"status": "busy", "session_started_at": datetime.utcnow()}}
     )
+    _broadcast()
     return {"message": "Session started", "auto_complete_in": "30 minutes"}
 
 @router.put("/complete/{doubt_id}")
@@ -144,6 +158,7 @@ def complete_doubt(doubt_id: str, authorization: str = Header(...)):
         {"_id": ObjectId(user["id"])},
         {"$set": {"status": "available"}}
     )
+    _broadcast()
     return {"message": "Session completed"}
 
 @router.put("/reject/{doubt_id}")
@@ -172,6 +187,7 @@ def reject_doubt(doubt_id: str, authorization: str = Header(...)):
         "doubt_id": doubt_id,
         "timestamp": datetime.utcnow()
     })
+    _broadcast()
     return {"message": "Session rejected, student re-queued as priority"}
 
 @router.post("/send-message/{doubt_id}")
@@ -189,4 +205,5 @@ def send_message(doubt_id: str, data: MessageRequest, authorization: str = Heade
             "message_read": False
         }}
     )
+    _broadcast()
     return {"message": "Message sent successfully"}
