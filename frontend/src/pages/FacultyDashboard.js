@@ -190,7 +190,7 @@ const rejectDoubt = async (doubt) => {
           <span style={{ fontSize: 11, padding: "3px 10px", background: "#eff6ff", color: BLUE, borderRadius: 10, fontWeight: 700 }}>FACULTY</span>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          {[["Dashboard", "dashboard"], ["Timetable", "timetable"]].map(([label, p]) => (
+          {[["Dashboard", "dashboard"], ["Timetable", "timetable"], ["Stats", "stats"]].map(([label, p]) => (
             <button key={p} onClick={() => setPage(p)}
               style={{ padding: "8px 16px", border: "none", borderRadius: 8, background: page === p ? BLUE : "none", color: page === p ? "#fff" : subColor, fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
               {label}
@@ -405,6 +405,51 @@ const rejectDoubt = async (doubt) => {
               ))}
             </div>
           </div>
+        )}
+
+        {page === "stats" && (
+          <>
+            <div style={{ marginBottom: 28 }}>
+              <h2 style={{ fontSize: 24, fontWeight: 800, color: textColor, margin: 0 }}>Performance Stats</h2>
+              <p style={{ color: subColor, marginTop: 4 }}>Your queue analytics and session insights</p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 14 }}>
+                {[
+                  { label: "Total Resolved", value: queue.filter ? 0 : 0, color: "#22c55e", icon: "✅" },
+                  { label: "Pending Queue", value: queue.length, color: "#f59e0b", icon: "⏳" },
+                  { label: "Group Sessions", value: queue.filter(d => d.grouped).length, color: "#8b5cf6", icon: "🤝" },
+                  { label: "Urgent Doubts", value: queue.filter(d => d.priority === "urgent").length, color: "#ef4444", icon: "🚨" },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", textAlign: "center" }}>
+                    <div style={{ fontSize: 24, marginBottom: 8 }}>{s.icon}</div>
+                    <div style={{ fontSize: 32, fontWeight: 800, color: s.color }}>{s.value}</div>
+                    <div style={{ fontSize: 12, color: subColor, marginTop: 4 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background: cardBg, borderRadius: 12, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontWeight: 700, color: textColor, marginBottom: 16 }}>📋 Current Queue Topics</div>
+                {queue.length === 0 ? (
+                  <div style={{ color: subColor, fontSize: 13 }}>No pending doubts right now</div>
+                ) : Object.entries(queue.reduce((acc, d) => {
+                  acc[d.subject] = (acc[d.subject] || 0) + 1;
+                  return acc;
+                }, {})).map(([subject, count], i) => (
+                  <div key={i} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ color: textColor, fontWeight: 600 }}>{subject}</span>
+                      <span style={{ color: subColor }}>{count} student{count > 1 ? "s" : ""}</span>
+                    </div>
+                    <div style={{ background: borderColor, borderRadius: 20, height: 6 }}>
+                      <div style={{ height: "100%", borderRadius: 20, background: "linear-gradient(90deg, #1a73e8, #4f9ef8)", width: `${(count / queue.length) * 100}%`, transition: "width 0.8s ease" }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
         )}
       </div>
 
