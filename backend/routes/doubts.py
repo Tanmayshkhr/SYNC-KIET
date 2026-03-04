@@ -15,7 +15,7 @@ client = MongoClient(os.getenv("MONGO_URL", "mongodb://localhost:27017"))
 db = client["synckiet"]
 
 @router.post("/submit")
-def submit_doubt(data: DoubtRequest, authorization: str = Header(...)):
+async def submit_doubt(data: DoubtRequest, authorization: str = Header(...)):
     token = authorization.replace("Bearer ", "")
     user = verify_token(token)
     if not user or user["role"] != "student":
@@ -70,7 +70,7 @@ def submit_doubt(data: DoubtRequest, authorization: str = Header(...)):
 
     wait_time = calculate_wait_time(data.faculty_id, queue_position, db)
 
-    _broadcast()
+    await _broadcast()
     return {
         "message": "Doubt submitted successfully",
         "doubt_id": doubt_id,
@@ -84,13 +84,12 @@ def submit_doubt(data: DoubtRequest, authorization: str = Header(...)):
 @router.on_event("startup")
 async def _noop(): pass  # ensures router can import manager lazily
 
-def _broadcast():
-    from main import manager
+async def _broadcast():
     try:
-        loop = asyncio.get_event_loop()
-        loop.create_task(manager.broadcast("refresh"))
-    except Exception:
-        pass
+        from main import manager
+        await manager.broadcast("refresh")
+    except Exception as e:
+        print("Broadcast error:", e)
 
 @router.get("/my-doubts")
 def get_my_doubts(authorization: str = Header(...)):
@@ -123,7 +122,7 @@ def get_faculty_queue(authorization: str = Header(...)):
     return {"queue": doubts, "total": len(doubts)}
 
 @router.put("/accept/{doubt_id}")
-def accept_doubt(doubt_id: str, authorization: str = Header(...)):
+async def accept_doubt(doubt_id: str, authorization: str = Header(...)):
     token = authorization.replace("Bearer ", "")
     user = verify_token(token)
     if not user or user["role"] != "faculty":
@@ -140,11 +139,11 @@ def accept_doubt(doubt_id: str, authorization: str = Header(...)):
         {"_id": ObjectId(user["id"])},
         {"$set": {"status": "busy", "session_started_at": datetime.utcnow()}}
     )
-    _broadcast()
+    await _broadcast()
     return {"message": "Session started", "auto_complete_in": "30 minutes"}
 
 @router.put("/complete/{doubt_id}")
-def complete_doubt(doubt_id: str, authorization: str = Header(...)):
+async def complete_doubt(doubt_id: str, authorization: str = Header(...)):
     token = authorization.replace("Bearer ", "")
     user = verify_token(token)
     if not user or user["role"] != "faculty":
@@ -158,11 +157,11 @@ def complete_doubt(doubt_id: str, authorization: str = Header(...)):
         {"_id": ObjectId(user["id"])},
         {"$set": {"status": "available"}}
     )
-    _broadcast()
+    await _broadcast()
     return {"message": "Session completed"}
 
 @router.put("/reject/{doubt_id}")
-def reject_doubt(doubt_id: str, authorization: str = Header(...)):
+async def reject_doubt(doubt_id: str, authorization: str = Header(...)):
     token = authorization.replace("Bearer ", "")
     user = verify_token(token)
     if not user or user["role"] != "faculty":
@@ -187,11 +186,11 @@ def reject_doubt(doubt_id: str, authorization: str = Header(...)):
         "doubt_id": doubt_id,
         "timestamp": datetime.utcnow()
     })
-    _broadcast()
+    await _broadcast()
     return {"message": "Session rejected, student re-queued as priority"}
 
 @router.post("/send-message/{doubt_id}")
-def send_message(doubt_id: str, data: MessageRequest, authorization: str = Header(...)):
+async def send_message(doubt_id: str, data: MessageRequest, authorization: str = Header(...)):
     token = authorization.replace("Bearer ", "")
     user = verify_token(token)
     if not user or user["role"] != "faculty":
@@ -205,5 +204,5 @@ def send_message(doubt_id: str, data: MessageRequest, authorization: str = Heade
             "message_read": False
         }}
     )
-    _broadcast()
+    await _broadcast()
     return {"message": "Message sent successfully"}
