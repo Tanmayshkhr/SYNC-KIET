@@ -1,8 +1,52 @@
 from google import genai
 import os
 import json
+import math
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+
+# ─── Vector Embedding Helpers ───────────────────────────────────────────
+
+def get_embedding(text: str) -> list:
+    """Get vector embedding for a text using Gemini embedding model."""
+    try:
+        result = client.models.embed_content(
+            model="text-embedding-004",
+            contents=text
+        )
+        return result.embeddings[0].values
+    except Exception as e:
+        print(f"Embedding failed: {e}")
+        return None
+
+
+def cosine_similarity(vec_a: list, vec_b: list) -> float:
+    """Compute cosine similarity between two vectors."""
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    mag_a = math.sqrt(sum(a * a for a in vec_a))
+    mag_b = math.sqrt(sum(b * b for b in vec_b))
+    if mag_a == 0 or mag_b == 0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
+
+def batch_embeddings(texts: list) -> list:
+    """Get embeddings for a batch of texts."""
+    try:
+        result = client.models.embed_content(
+            model="text-embedding-004",
+            contents=texts
+        )
+        return [e.values for e in result.embeddings]
+    except Exception as e:
+        print(f"Batch embedding failed: {e}")
+        return [None] * len(texts)
+
+
+# ─── Clustering with Vector Similarity ──────────────────────────────────
+
+SIMILARITY_THRESHOLD = 0.82
 
 def cluster_doubts(doubts: list):
     if len(doubts) < 2:
@@ -13,34 +57,92 @@ def cluster_doubts(doubts: list):
             "students": []
         }
     try:
-        doubt_list = [
-            f"Student: {d['student_name']}, Topic: {d['topic']}, Description: {d['description']}"
+        # Build text representations
+        texts = [
+            f"{d['topic']} {d.get('description', '')} {d.get('subject', '')}"
             for d in doubts
         ]
-        doubt_text = "\n".join(doubt_list)
+        embeddings = batch_embeddings(texts)
 
-        prompt = f"""Analyze these student doubts and check if they are about the EXACT SAME concept or very closely related topic. Different algorithms or methods should NOT be grouped even if they are in the same subject.
+        # Check if embeddings succeeded
+        if any(e is None for e in embeddings):
+            raise Exception("Embedding generation failed, falling back")
 
-{doubt_text}
+        # Compute pairwise similarity
+        n = len(embeddings)
+        similar_pairs = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                sim = cosine_similarity(embeddings[i], embeddings[j])
+                if sim >= SIMILARITY_THRESHOLD:
+                    similar_pairs.append((i, j, sim))
 
-Respond ONLY with a JSON object, no markdown, no explanation:
-{{
-    "grouped": true or false,
-    "similarity_score": 0-100,
-    "cluster_name": "name of the common topic",
-    "recommendation": "one sentence recommendation",
-    "students": ["list of student names to group"]
-}}"""
+        if not similar_pairs:
+            return {
+                "grouped": False,
+                "reason": "Topics too different to group",
+                "cluster_name": "",
+                "students": []
+            }
 
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt, request_options={"timeout": 8})
-        raw = response.text.strip()
-        clean = raw.replace("```json", "").replace("```", "").strip()
-        print(f"Clustering {len(doubts)} doubts: {[d['topic'] for d in doubts]}")
-        print(f"Result: {clean}")
-        return json.loads(clean)
+        # Union-Find to form clusters
+        parent = list(range(n))
 
-    except Exception:
-        # Smart keyword-based fallback when AI quota exceeded
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(x, y):
+            px, py = find(x), find(y)
+            if px != py:
+                parent[px] = py
+
+        for i, j, _ in similar_pairs:
+            union(i, j)
+
+        clusters = {}
+        for idx in range(n):
+            root = find(idx)
+            clusters.setdefault(root, []).append(idx)
+
+        # Find largest cluster with 2+ members
+        best_cluster = max(
+            [c for c in clusters.values() if len(c) >= 2],
+            key=len, default=None
+        )
+
+        if not best_cluster:
+            return {
+                "grouped": False,
+                "reason": "No strong similarity found",
+                "cluster_name": "",
+                "students": []
+            }
+
+        avg_sim = sum(
+            cosine_similarity(embeddings[i], embeddings[j])
+            for idx_i, i in enumerate(best_cluster)
+            for j in best_cluster[idx_i + 1:]
+        ) / max(len(best_cluster) * (len(best_cluster) - 1) / 2, 1)
+
+        cluster_topics = [doubts[i]["topic"] for i in best_cluster]
+        cluster_name = max(set(cluster_topics), key=cluster_topics.count)
+
+        print(f"Vector clustering {len(doubts)} doubts → cluster of {len(best_cluster)} (sim={avg_sim:.2f})")
+
+        return {
+            "grouped": True,
+            "similarity_score": int(avg_sim * 100),
+            "cluster_name": cluster_name,
+            "recommendation": f"Group these {len(best_cluster)} students for a common session on {cluster_name}",
+            "students": [doubts[i]["student_name"] for i in best_cluster]
+        }
+
+    except Exception as e:
+        print(f"Vector clustering failed ({e}), using keyword fallback")
+        # Keyword-based fallback
         topics = [d["topic"].lower() for d in doubts]
 
         subject_keywords = {
@@ -182,20 +284,96 @@ def _normalize_topic(topic: str) -> str:
     return TOPIC_ALIASES.get(t, t)
 
 def find_similar_doubts(doubts: list):
-    """Find groups of similar doubts in a queue using normalization + AI fallback."""
+    """Find groups of similar doubts using vector embeddings + fallback to normalization + AI."""
     if len(doubts) < 2:
         return {"groups": [], "ungrouped": [d["_id"] for d in doubts]}
 
-    # Phase 1: Normalize topics and group by canonical name
+    groups = []
+    ungrouped_ids = []
+
+    # Phase 1: Vector-based similarity clustering
+    try:
+        texts = [
+            f"{d['topic']} {d.get('description', '')} {d.get('subject', '')}"
+            for d in doubts
+        ]
+        embeddings = batch_embeddings(texts)
+
+        if not any(e is None for e in embeddings):
+            n = len(embeddings)
+            parent = list(range(n))
+
+            def find(x):
+                while parent[x] != x:
+                    parent[x] = parent[parent[x]]
+                    x = parent[x]
+                return x
+
+            def union(x, y):
+                px, py = find(x), find(y)
+                if px != py:
+                    parent[px] = py
+
+            for i in range(n):
+                for j in range(i + 1, n):
+                    sim = cosine_similarity(embeddings[i], embeddings[j])
+                    if sim >= SIMILARITY_THRESHOLD:
+                        union(i, j)
+
+            clusters = {}
+            for idx in range(n):
+                root = find(idx)
+                clusters.setdefault(root, []).append(idx)
+
+            grouped_indices = set()
+            for root, members in clusters.items():
+                if len(members) >= 2:
+                    grouped_indices.update(members)
+                    cluster_topics = [doubts[m]["topic"] for m in members]
+                    primary_topic = max(set(cluster_topics), key=cluster_topics.count)
+
+                    # Calculate average similarity within group
+                    sims = []
+                    for ii in range(len(members)):
+                        for jj in range(ii + 1, len(members)):
+                            sims.append(cosine_similarity(
+                                embeddings[members[ii]], embeddings[members[jj]]
+                            ))
+                    avg_sim = sum(sims) / len(sims) if sims else 0
+
+                    groups.append({
+                        "canonical_topic": primary_topic.title(),
+                        "doubts": [
+                            {"_id": str(doubts[m]["_id"]) if not isinstance(doubts[m]["_id"], str) else doubts[m]["_id"],
+                             "student_name": doubts[m]["student_name"],
+                             "topic": doubts[m]["topic"],
+                             "subject": doubts[m]["subject"]}
+                            for m in members
+                        ],
+                        "count": len(members),
+                        "confidence": "high" if avg_sim >= 0.90 else "medium" if avg_sim >= 0.82 else "low",
+                        "similarity": round(avg_sim * 100)
+                    })
+
+            ungrouped_ids = [
+                str(doubts[i]["_id"]) if not isinstance(doubts[i]["_id"], str) else doubts[i]["_id"]
+                for i in range(n) if i not in grouped_indices
+            ]
+            print(f"Vector grouping: {len(groups)} groups, {len(ungrouped_ids)} ungrouped")
+            return {"groups": groups, "ungrouped": ungrouped_ids}
+        else:
+            raise Exception("Embeddings unavailable")
+
+    except Exception as e:
+        print(f"Vector similarity failed ({e}), falling back to normalization")
+
+    # Phase 2 Fallback: Normalize topics and group by canonical name
     topic_map = {}
     for d in doubts:
         canonical = _normalize_topic(d["topic"])
         if canonical not in topic_map:
             topic_map[canonical] = []
         topic_map[canonical].append(d)
-
-    groups = []
-    ungrouped_ids = []
 
     for canonical, members in topic_map.items():
         if len(members) >= 2:
@@ -216,7 +394,7 @@ def find_similar_doubts(doubts: list):
                 [str(m["_id"]) if not isinstance(m["_id"], str) else m["_id"] for m in members]
             )
 
-    # Phase 2: Try AI to find less obvious similarities among ungrouped doubts
+    # Phase 3: Try AI for remaining ungrouped
     ungrouped_doubts = [d for d in doubts
                         if (str(d["_id"]) if not isinstance(d["_id"], str) else d["_id"]) in ungrouped_ids]
 
@@ -307,3 +485,194 @@ def calculate_wait_time(faculty_id: str, queue_position: int, db) -> str:
         hours = total_wait // 60
         mins = total_wait % 60
         return f"{hours}h {mins}m"
+
+
+# ─── Smart Faculty Recommendation ──────────────────────────────────────
+
+def recommend_faculty(topic: str, subject: str, db, get_status_fn):
+    """
+    Recommend top faculty for a given topic based on:
+    1. How many similar doubts they resolved (vector similarity on topic)
+    2. Average resolution time
+    3. Current availability (free right now?)
+    4. Current queue length
+    """
+    faculties = list(db.faculty.find({}))
+    if not faculties:
+        return []
+
+    # Normalize the input topic
+    query_topic = _normalize_topic(topic)
+
+    # Get embedding for the query topic
+    query_embedding = get_embedding(f"{topic} {subject}")
+
+    scored = []
+
+    for fac in faculties:
+        fac_id = str(fac["_id"])
+        fac_code = fac.get("faculty_code", "")
+
+        # ── 1. Doubt resolution history ──
+        # Find completed doubts for this faculty
+        completed = list(db.doubts.find({
+            "faculty_id": fac_id,
+            "status": "completed"
+        }))
+
+        # Count topic-relevant resolved doubts using vector similarity
+        relevant_count = 0
+        total_resolved = len(completed)
+
+        if query_embedding and completed:
+            # Get topics from completed doubts
+            doubt_topics = list(set(
+                f"{d.get('topic', '')} {d.get('subject', '')}" for d in completed
+            ))
+            if doubt_topics:
+                try:
+                    topic_embeddings = batch_embeddings(doubt_topics)
+                    # Count how many unique topics are similar
+                    topic_sim_scores = []
+                    for emb in topic_embeddings:
+                        if emb:
+                            sim = cosine_similarity(query_embedding, emb)
+                            topic_sim_scores.append(sim)
+
+                    # Count completed doubts with similar topics
+                    similar_topics = set()
+                    for i, sim in enumerate(topic_sim_scores):
+                        if sim >= 0.75:
+                            similar_topics.add(doubt_topics[i])
+
+                    for d in completed:
+                        d_text = f"{d.get('topic', '')} {d.get('subject', '')}"
+                        if d_text in similar_topics:
+                            relevant_count += 1
+                except Exception:
+                    pass
+
+        # Fallback: keyword matching if embeddings fail
+        if relevant_count == 0 and completed:
+            for d in completed:
+                d_topic = _normalize_topic(d.get("topic", ""))
+                d_subject = d.get("subject", "").lower()
+                if (query_topic in d_topic or d_topic in query_topic or
+                        topic.lower() in d_subject or subject.lower() in d_subject):
+                    relevant_count += 1
+
+        # ── 2. Average resolution time ──
+        durations = []
+        for d in completed:
+            if "accepted_at" in d and "completed_at" in d:
+                diff = (d["completed_at"] - d["accepted_at"]).seconds // 60
+                if 0 < diff < 120:
+                    durations.append(diff)
+        avg_time = round(sum(durations) / len(durations)) if durations else None
+
+        # ── 3. Current availability ──
+        try:
+            status_data = get_status_fn(fac_code) if fac_code else None
+            if isinstance(status_data, dict):
+                current_status = status_data.get("status", "unknown")
+            else:
+                current_status = "unknown"
+        except Exception:
+            current_status = "unknown"
+
+        # Check manual override from face scan
+        manual = fac.get("manual_status")
+        if manual == "available":
+            current_status = "available"
+        elif manual == "left":
+            current_status = "left"
+
+        # ── 4. Queue length ──
+        queue_count = db.doubts.count_documents({
+            "faculty_id": fac_id,
+            "status": "pending"
+        })
+
+        # ── Scoring ──
+        score = 0
+
+        # Relevant doubts resolved (0-40 points)
+        score += min(relevant_count * 4, 40)
+
+        # Fast resolution bonus (0-20 points)
+        if avg_time is not None:
+            if avg_time <= 10:
+                score += 20
+            elif avg_time <= 15:
+                score += 15
+            elif avg_time <= 20:
+                score += 10
+            elif avg_time <= 30:
+                score += 5
+
+        # Availability bonus (0-25 points)
+        if current_status == "available":
+            score += 25
+        elif current_status == "lunch":
+            score += 5
+
+        # Short queue bonus (0-15 points)
+        if queue_count == 0:
+            score += 15
+        elif queue_count == 1:
+            score += 10
+        elif queue_count == 2:
+            score += 5
+
+        # Subject match bonus
+        fac_subject = fac.get("subject", "").lower()
+        if subject.lower() in fac_subject or fac_subject in subject.lower():
+            score += 10
+
+        # Build reason string
+        reasons = []
+        if relevant_count > 0:
+            reasons.append(f"{relevant_count} {subject[:20]} doubts resolved")
+        elif total_resolved > 0:
+            reasons.append(f"{total_resolved} total doubts resolved")
+        if avg_time is not None:
+            reasons.append(f"Avg {avg_time} mins")
+        if current_status == "available":
+            reasons.append("Free now")
+        elif current_status == "busy":
+            reasons.append("In class")
+        elif current_status == "lunch":
+            reasons.append("At lunch")
+        if queue_count > 0:
+            reasons.append(f"{queue_count} in queue")
+        else:
+            reasons.append("No queue")
+
+        scored.append({
+            "faculty_id": fac_id,
+            "faculty_name": fac.get("name", ""),
+            "faculty_code": fac_code,
+            "subject": fac.get("subject", ""),
+            "cabin": fac.get("cabin", ""),
+            "block": fac.get("block", ""),
+            "email": fac.get("email", ""),
+            "status": current_status,
+            "score": score,
+            "relevant_resolved": relevant_count,
+            "total_resolved": total_resolved,
+            "avg_resolution_time": avg_time,
+            "queue_count": queue_count,
+            "reason": " · ".join(reasons)
+        })
+
+    # Sort by score descending, return top 3
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    top = scored[:3]
+
+    # Add rank medals
+    medals = ["🥇", "🥈", "🥉"]
+    for i, rec in enumerate(top):
+        rec["rank"] = i + 1
+        rec["medal"] = medals[i]
+
+    return top

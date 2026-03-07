@@ -167,6 +167,11 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
   const [announcements, setAnnouncements] = useState([]);
   const [notifDismissed, setNotifDismissed] = useState(localStorage.getItem("notifDismissed") === "true");
   const wsRef = useRef(null);
+  const [recommendTopic, setRecommendTopic] = useState("");
+  const [recommendSubject, setRecommendSubject] = useState("");
+  const [recommendations, setRecommendations] = useState(null);
+  const [recLoading, setRecLoading] = useState(false);
+  const [showRecommend, setShowRecommend] = useState(false);
 
   const filteredFaculty = faculty
     .filter(f => f.faculty_name?.toLowerCase().includes(search.toLowerCase()))
@@ -290,6 +295,28 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
 
   const logout = () => { localStorage.clear(); setUser(null); };
 
+  const fetchRecommendations = async () => {
+    if (!recommendTopic.trim()) return;
+    setRecLoading(true);
+    try {
+      const res = await fetch(`${API}/doubts/recommend-faculty`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${user.token}`
+        },
+        body: JSON.stringify({ topic: recommendTopic, subject: recommendSubject })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRecommendations(data.recommendations || []);
+      }
+    } catch (err) {
+      console.error("Recommendation failed:", err);
+    }
+    setRecLoading(false);
+  };
+
   if (page === "submit") return (
     <SubmitDoubt
       darkMode={darkMode}
@@ -364,6 +391,125 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
             <div style={{ marginBottom: 28 }}>
               <h2 style={{ fontSize: 24, fontWeight: 800, color: textColor, margin: 0 }}>Find Faculty</h2>
               <p style={{ color: subColor, marginTop: 4 }}>Live availability · AI-powered queue · Smart grouping</p>
+            </div>
+
+            {/* AI Smart Recommend Section */}
+            <div style={{
+              background: `linear-gradient(135deg, ${darkMode ? '#1e3a5f' : '#eff6ff'}, ${darkMode ? '#1e293b' : '#f0fdf4'})`,
+              border: `1px solid ${darkMode ? '#334155' : '#bfdbfe'}`,
+              borderRadius: 14, padding: 20, marginBottom: 20,
+              boxShadow: "0 2px 12px rgba(26,115,232,0.08)"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: showRecommend ? 16 : 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 22 }}>🤖</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: textColor }}>AI Faculty Finder</div>
+                    <div style={{ fontSize: 12, color: subColor }}>Type your doubt topic — AI recommends the best faculty</div>
+                  </div>
+                </div>
+                <button onClick={() => { setShowRecommend(!showRecommend); setRecommendations(null); }}
+                  style={{ padding: "6px 14px", background: showRecommend ? "transparent" : BLUE, color: showRecommend ? subColor : "#fff", border: showRecommend ? `1px solid ${borderColor}` : "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
+                  {showRecommend ? "Close" : "Try it"}
+                </button>
+              </div>
+
+              {showRecommend && (
+                <div>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                    <select value={recommendSubject} onChange={e => setRecommendSubject(e.target.value)}
+                      style={{ padding: "10px 14px", borderRadius: 8, border: `1.5px solid ${borderColor}`, fontSize: 13, outline: "none", color: textColor, background: cardBg, minWidth: 180 }}>
+                      <option value="">Any Subject</option>
+                      {["Design and Analysis of Algorithms", "Computer Networks", "Web Technology", "ANN and Machine Learning", "Data Analytics", "Universal Human Values", "Aptitude", "Soft Skills"].map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={recommendTopic}
+                      onChange={e => setRecommendTopic(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && fetchRecommendations()}
+                      placeholder='e.g. "Dijkstra Algorithm", "KNN", "Binary Search Tree"...'
+                      style={{ flex: 1, minWidth: 200, padding: "10px 14px", borderRadius: 8, border: `1.5px solid ${borderColor}`, fontSize: 14, outline: "none", background: cardBg, color: textColor }}
+                    />
+                    <button onClick={fetchRecommendations} disabled={recLoading || !recommendTopic.trim()}
+                      style={{ padding: "10px 20px", background: BLUE, color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 13, opacity: (recLoading || !recommendTopic.trim()) ? 0.6 : 1, whiteSpace: "nowrap" }}>
+                      {recLoading ? "Finding..." : "🔍 Recommend"}
+                    </button>
+                  </div>
+
+                  {/* Quick topic chips */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: recommendations ? 16 : 0 }}>
+                    {["Dijkstra Algorithm", "Binary Search Tree", "KNN", "React Hooks", "OSI Model", "Dynamic Programming"].map(t => (
+                      <span key={t} onClick={() => { setRecommendTopic(t); }}
+                        style={{ padding: "4px 10px", background: darkMode ? "#334155" : "#e0e7ff", color: BLUE, borderRadius: 20, fontSize: 11, cursor: "pointer", fontWeight: 600 }}>
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Recommendation Results */}
+                  {recommendations && recommendations.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: subColor, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                        Top {recommendations.length} Faculty for "{recommendTopic}"
+                      </div>
+                      {recommendations.map((rec, i) => (
+                        <div key={rec.faculty_id} className="faculty-card" style={{
+                          background: cardBg, borderRadius: 12, padding: 16,
+                          border: i === 0 ? `2px solid ${BLUE}` : `1px solid ${borderColor}`,
+                          boxShadow: i === 0 ? "0 4px 16px rgba(26,115,232,0.12)" : "0 2px 8px rgba(0,0,0,0.04)",
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          cursor: "pointer",
+                          animation: `fadeIn 0.3s ease ${i * 0.1}s both`
+                        }}
+                        onClick={() => {
+                          const fac = faculty.find(f => f._id === rec.faculty_id);
+                          if (fac) { setSelectedFaculty(fac); setPage("submit"); }
+                        }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                            <div style={{
+                              width: 44, height: 44, borderRadius: 12,
+                              background: i === 0 ? "linear-gradient(135deg, #fbbf24, #f59e0b)" : i === 1 ? "linear-gradient(135deg, #94a3b8, #cbd5e1)" : "linear-gradient(135deg, #cd7f32, #b8860b)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 22
+                            }}>
+                              {rec.medal}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 15, color: textColor }}>{rec.faculty_name}</div>
+                              <div style={{ fontSize: 12, color: subColor, marginTop: 2 }}>{rec.subject}</div>
+                              <div style={{ fontSize: 12, color: BLUE, marginTop: 4, fontWeight: 600 }}>
+                                {rec.reason}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                            <StatusBadge status={rec.status} />
+                            <div style={{ fontSize: 11, color: subColor }}>
+                              Score: {rec.score}
+                            </div>
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                const fac = faculty.find(f => f._id === rec.faculty_id);
+                                if (fac) { setSelectedFaculty(fac); setPage("submit"); }
+                              }}
+                              style={{ padding: "5px 12px", background: BLUE, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 11 }}>
+                              Submit Doubt →
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {recommendations && recommendations.length === 0 && (
+                    <div style={{ background: cardBg, borderRadius: 10, padding: 16, textAlign: "center", color: subColor, fontSize: 13 }}>
+                      No faculty found for this topic. Try a different search.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Search and Filters */}

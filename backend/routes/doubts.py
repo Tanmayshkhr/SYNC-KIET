@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from pymongo import MongoClient
 from utils.jwt import verify_token
-from utils.ai import cluster_doubts, calculate_wait_time, find_similar_doubts
+from utils.ai import cluster_doubts, calculate_wait_time, find_similar_doubts, recommend_faculty
 from routes.timetable import get_faculty_status
 from models.doubt import DoubtRequest
 from models.user import MessageRequest
@@ -302,4 +302,32 @@ def get_faculty_history(authorization: str = Header(...)):
         "history": doubts,
         "total_completed": total_completed,
         "total_rejected": total_rejected
+    }
+
+
+class RecommendRequest(BaseModel):
+    topic: str
+    subject: str = ""
+
+
+@router.post("/recommend-faculty")
+def get_faculty_recommendations(data: RecommendRequest, authorization: str = Header(...)):
+    """Smart faculty recommendation based on topic, history, availability, and queue."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user or user["role"] != "student":
+        raise HTTPException(401, "Unauthorized")
+
+    recommendations = recommend_faculty(
+        topic=data.topic,
+        subject=data.subject,
+        db=db,
+        get_status_fn=get_faculty_status
+    )
+
+    return {
+        "topic": data.topic,
+        "subject": data.subject,
+        "recommendations": recommendations,
+        "count": len(recommendations)
     }
