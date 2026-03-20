@@ -3,6 +3,7 @@ from pymongo import MongoClient
 from utils.jwt import verify_token
 from bson import ObjectId
 from datetime import datetime
+from pydantic import BaseModel
 import bcrypt
 import os
 
@@ -111,3 +112,59 @@ def get_announcements():
         a["_id"] = str(a["_id"])
         a["created_at"] = str(a["created_at"])
     return {"announcements": announcements}
+
+
+# ── AI Announcement Generator ───────────────────────────────────────────
+class AIAnnouncementRequest(BaseModel):
+    prompt: str
+
+@router.post("/generate-announcement")
+async def generate_announcement(data: AIAnnouncementRequest, authorization: str = Header(...)):
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user or user["role"] != "admin":
+        raise HTTPException(401, "Unauthorized")
+    try:
+        from utils.ai import client as gemini_client
+        prompt = f"""Write a professional announcement for KIET Group of Institutions based on: "{data.prompt}"
+
+Rules:
+- Keep it under 3 sentences
+- Professional but friendly tone
+- Include 1-2 relevant emojis
+- Start with the most important info
+- No greetings like Dear Students
+
+Reply with ONLY the announcement text, nothing else."""
+
+        response = gemini_client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
+        return {"announcement": response.text.strip()}
+    except Exception as e:
+        print(f"AI announcement error: {e}")
+        err = str(e)
+        if "429" in err or "RESOURCE_EXHAUSTED" in err:
+            raise HTTPException(429, "Gemini quota exceeded. Try again in a few minutes.")
+        raise HTTPException(500, f"AI failed: {err}")
+
+
+# ── Bulk Reset Password ─────────────────────────────────────────────────
+class BulkResetRequest(BaseModel):
+    role: str
+    new_password: str
+
+@router.put("/bulk-reset-password")
+def bulk_reset_password(data: BulkResetRequest, authorization: str = Header(...)):
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user or user["role"] != "admin":
+        raise HTTPException(401, "Unauthorized")
+    if len(data.new_password) < 4:
+        raise HTTPException(400, "Password too short (min 4 chars)")
+    import bcrypt as _bcrypt
+    hashed = _bcrypt.hashpw(data.new_password.encode(), _bcrypt.gensalt()).decode()
+    collection = db.students if data.role == "student" else db.faculty
+    result = collection.update_many({}, {"$set": {"password": hashed}})
+    return {"message": f"Reset {result.modified_count} {data.role} passwords successfully!"}

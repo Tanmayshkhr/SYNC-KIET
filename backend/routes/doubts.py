@@ -102,9 +102,34 @@ def get_my_doubts(authorization: str = Header(...)):
         raise HTTPException(401, "Unauthorized")
 
     doubts = list(db.doubts.find({"student_id": user["id"]}).sort("created_at", -1))
+
+    # Build faculty lookup cache
+    faculty_ids = list(set(d.get("faculty_id") for d in doubts if d.get("faculty_id")))
+    faculty_map = {}
+    for fid in faculty_ids:
+        try:
+            fac = db.faculty.find_one({"_id": ObjectId(fid)})
+            if fac:
+                faculty_map[fid] = {
+                    "name": fac.get("name", ""),
+                    "cabin": fac.get("cabin", ""),
+                    "block": fac.get("block", ""),
+                    "subject": fac.get("subject", ""),
+                    "email": fac.get("email", ""),
+                }
+        except:
+            pass
+
     for d in doubts:
         d["_id"] = str(d["_id"])
         d["created_at"] = str(d["created_at"])
+        fid = d.get("faculty_id", "")
+        fac_info = faculty_map.get(fid, {})
+        d["faculty_name"] = fac_info.get("name", "")
+        d["faculty_cabin"] = fac_info.get("cabin", "")
+        d["faculty_block"] = fac_info.get("block", "")
+        d["faculty_subject"] = fac_info.get("subject", "")
+
     return {"doubts": doubts}
 
 @router.get("/faculty-queue")
@@ -296,12 +321,20 @@ def get_faculty_history(authorization: str = Header(...)):
         d["rejected_at"] = str(d.get("rejected_at", ""))
 
     total_completed = db.doubts.count_documents({"faculty_id": user["id"], "status": "completed"})
-    total_rejected = db.doubts.count_documents({"faculty_id": user["id"], "status": {"$in": ["rejected"]}})
+    total_rejected = db.doubts.count_documents({"faculty_id": user["id"], "status": "rejected"})
+
+    # Count unique group sessions by cluster_id
+    grouped_cluster_ids = db.doubts.distinct(
+        "cluster_id",
+        {"faculty_id": user["id"], "status": "completed", "grouped": True, "cluster_id": {"$ne": None}}
+    )
+    total_group_sessions = len(grouped_cluster_ids)
 
     return {
         "history": doubts,
         "total_completed": total_completed,
-        "total_rejected": total_rejected
+        "total_rejected": total_rejected,
+        "total_group_sessions": total_group_sessions
     }
 
 

@@ -497,7 +497,19 @@ def recommend_faculty(topic: str, subject: str, db, get_status_fn):
     3. Current availability (free right now?)
     4. Current queue length
     """
-    faculties = list(db.faculty.find({}))
+    # Hard filter by subject if provided — never recommend unrelated subjects
+    if subject and subject.strip():
+        subject_lower = subject.strip().lower()
+        all_faculties = list(db.faculty.find({}))
+        subject_filtered = [
+            f for f in all_faculties
+            if subject_lower in f.get("subject", "").lower()
+            or f.get("subject", "").lower() in subject_lower
+        ]
+        faculties = subject_filtered if subject_filtered else all_faculties
+    else:
+        faculties = list(db.faculty.find({}))
+
     if not faculties:
         return []
 
