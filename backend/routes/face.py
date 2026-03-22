@@ -81,7 +81,7 @@ def decode_base64_image(base64_str: str):
 
 def get_encoding_fr(img):
     """Get face encoding using face_recognition library."""
-    rgb = img[:, :, ::-1]  # BGR to RGB
+    rgb = np.ascontiguousarray(img[:, :, ::-1])  # BGR to RGB, contiguous memory
     encodings = face_recognition.face_encodings(rgb)
     if len(encodings) == 0:
         return None
@@ -90,7 +90,7 @@ def get_encoding_fr(img):
 
 def compare_faces_fr(stored_encoding, img):
     """Compare faces using face_recognition library."""
-    rgb = img[:, :, ::-1]
+    rgb = np.ascontiguousarray(img[:, :, ::-1])  # BGR to RGB, contiguous memory
     encodings = face_recognition.face_encodings(rgb)
     if len(encodings) == 0:
         return False, 0.0

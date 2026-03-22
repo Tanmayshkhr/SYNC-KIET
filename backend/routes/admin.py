@@ -124,9 +124,8 @@ async def generate_announcement(data: AIAnnouncementRequest, authorization: str 
     user = verify_token(token)
     if not user or user["role"] != "admin":
         raise HTTPException(401, "Unauthorized")
-    try:
-        from utils.ai import client as gemini_client
-        prompt = f"""Write a professional announcement for KIET Group of Institutions based on: "{data.prompt}"
+
+    prompt_text = f"""Write a professional announcement for KIET Group of Institutions based on: "{data.prompt}"
 
 Rules:
 - Keep it under 3 sentences
@@ -137,17 +136,33 @@ Rules:
 
 Reply with ONLY the announcement text, nothing else."""
 
+    # Try Groq first (primary)
+    try:
+        from groq import Groq
+        groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        chat = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt_text}],
+            max_tokens=200
+        )
+        return {"announcement": chat.choices[0].message.content.strip()}
+    except Exception as groq_err:
+        print(f"Groq failed: {groq_err}")
+
+    # Try Gemini as fallback
+    try:
+        from utils.ai import client as gemini_client
         response = gemini_client.models.generate_content(
             model="gemini-2.0-flash",
-            contents=prompt
+            contents=prompt_text
         )
         return {"announcement": response.text.strip()}
-    except Exception as e:
-        print(f"AI announcement error: {e}")
-        err = str(e)
-        if "429" in err or "RESOURCE_EXHAUSTED" in err:
-            raise HTTPException(429, "Gemini quota exceeded. Try again in a few minutes.")
-        raise HTTPException(500, f"AI failed: {err}")
+    except Exception as gemini_err:
+        print(f"Gemini failed: {gemini_err}")
+        raise HTTPException(500, "AI generation failed. Please type announcement manually.")
+
+
+
 
 
 # ── Bulk Reset Password ─────────────────────────────────────────────────

@@ -497,18 +497,79 @@ def recommend_faculty(topic: str, subject: str, db, get_status_fn):
     3. Current availability (free right now?)
     4. Current queue length
     """
-    # Hard filter by subject if provided — never recommend unrelated subjects
-    if subject and subject.strip():
-        subject_lower = subject.strip().lower()
-        all_faculties = list(db.faculty.find({}))
+    # Auto-detect subject from topic if not provided
+    TOPIC_SUBJECT_MAP = {
+        # Computer Networks
+        "osi": "Computer Networks", "tcp": "Computer Networks", "udp": "Computer Networks",
+        "dns": "Computer Networks", "http": "Computer Networks", "routing": "Computer Networks",
+        "subnet": "Computer Networks", "ethernet": "Computer Networks", "wifi": "Computer Networks",
+        "ip": "Computer Networks", "ftp": "Computer Networks", "smtp": "Computer Networks",
+        "congestion": "Computer Networks", "switching": "Computer Networks", "csma": "Computer Networks",
+        # DAA
+        "dijkstra": "Design and Analysis of Algorithms", "kruskal": "Design and Analysis of Algorithms",
+        "prim": "Design and Analysis of Algorithms", "dynamic programming": "Design and Analysis of Algorithms",
+        "dp": "Design and Analysis of Algorithms", "bst": "Design and Analysis of Algorithms",
+        "binary search": "Design and Analysis of Algorithms", "sorting": "Design and Analysis of Algorithms",
+        "graph": "Design and Analysis of Algorithms", "greedy": "Design and Analysis of Algorithms",
+        "bellman": "Design and Analysis of Algorithms", "floyd": "Design and Analysis of Algorithms",
+        "knapsack": "Design and Analysis of Algorithms", "lcs": "Design and Analysis of Algorithms",
+        "np": "Design and Analysis of Algorithms", "complexity": "Design and Analysis of Algorithms",
+        "shell sort": "Design and Analysis of Algorithms", "radix": "Design and Analysis of Algorithms",
+        # ML/ANN
+        "knn": "ANN and Machine Learning", "k-nearest": "ANN and Machine Learning",
+        "neural": "ANN and Machine Learning", "regression": "ANN and Machine Learning",
+        "decision tree": "ANN and Machine Learning", "random forest": "ANN and Machine Learning",
+        "svm": "ANN and Machine Learning", "clustering": "ANN and Machine Learning",
+        "k-means": "ANN and Machine Learning", "naive bayes": "ANN and Machine Learning",
+        "backpropagation": "ANN and Machine Learning", "gradient": "ANN and Machine Learning",
+        "cnn": "ANN and Machine Learning", "rnn": "ANN and Machine Learning",
+        "lstm": "ANN and Machine Learning", "perceptron": "ANN and Machine Learning",
+        "supervised": "ANN and Machine Learning", "unsupervised": "ANN and Machine Learning",
+        "overfitting": "ANN and Machine Learning", "dropout": "ANN and Machine Learning",
+        # Web Technology
+        "react": "Web Technology", "node": "Web Technology", "express": "Web Technology",
+        "mongodb": "Web Technology", "html": "Web Technology", "css": "Web Technology",
+        "javascript": "Web Technology", "api": "Web Technology", "rest": "Web Technology",
+        "flask": "Web Technology", "django": "Web Technology", "hooks": "Web Technology",
+        "redux": "Web Technology", "websocket": "Web Technology", "event loop": "Web Technology",
+        # Data Analytics
+        "pandas": "Data Analytics", "numpy": "Data Analytics", "matplotlib": "Data Analytics",
+        "seaborn": "Data Analytics", "pca": "Data Analytics", "visualization": "Data Analytics",
+        "hypothesis": "Data Analytics", "statistical": "Data Analytics", "pivot": "Data Analytics",
+        # Soft Skills
+        "communication": "Soft Skills", "resume": "Soft Skills", "interview": "Soft Skills",
+        "presentation": "Soft Skills", "leadership": "Soft Skills", "email writing": "Soft Skills",
+        # Aptitude
+        "percentage": "Aptitude", "probability": "Aptitude", "reasoning": "Aptitude",
+        "profit": "Aptitude", "ratio": "Aptitude", "permutation": "Aptitude",
+        # UHV
+        "ethics": "Universal Human Values", "harmony": "Universal Human Values",
+        "values": "Universal Human Values", "society": "Universal Human Values",
+    }
+
+    # Detect subject from topic if not explicitly provided
+    detected_subject = subject.strip() if subject and subject.strip() else ""
+    if not detected_subject:
+        topic_lower = topic.lower()
+        for keyword, mapped_subject in TOPIC_SUBJECT_MAP.items():
+            if keyword in topic_lower:
+                detected_subject = mapped_subject
+                print(f"[AI Recommender] Auto-detected subject: {detected_subject} from topic: {topic}")
+                break
+
+    # Hard filter by subject — never recommend unrelated faculty
+    all_faculties = list(db.faculty.find({}))
+    if detected_subject:
         subject_filtered = [
             f for f in all_faculties
-            if subject_lower in f.get("subject", "").lower()
-            or f.get("subject", "").lower() in subject_lower
+            if detected_subject.lower() in f.get("subject", "").lower()
+            or f.get("subject", "").lower() in detected_subject.lower()
         ]
         faculties = subject_filtered if subject_filtered else all_faculties
+        if not subject_filtered:
+            print(f"[AI Recommender] No faculty found for subject: {detected_subject}, using all")
     else:
-        faculties = list(db.faculty.find({}))
+        faculties = all_faculties
 
     if not faculties:
         return []

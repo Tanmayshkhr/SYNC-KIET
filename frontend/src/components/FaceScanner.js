@@ -18,15 +18,35 @@ export default function FaceScanner({ user, action, darkMode, onClose, onComplet
   const startCamera = async (videoEl) => {
     if (!videoEl || streamRef.current) return;
     try {
-const stream = await navigator.mediaDevices.getUserMedia({ 
-  video: { 
-    width: { exact: 640 }, 
-    height: { exact: 480 },
-    frameRate: { ideal: 30 }
-  } 
-});      streamRef.current = stream;
+      // Enumerate cameras and pick physical USB cam over virtual (EShare etc.)
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === "videoinput");
+      console.log("Available cameras:", videoDevices.map(d => d.label));
+
+      const physicalCam = videoDevices.find(d =>
+        d.label.toLowerCase().includes("usb") ||
+        d.label.toLowerCase().includes("uvc") ||
+        d.label.toLowerCase().includes("webcam") ||
+        d.label.toLowerCase().includes("hd camera") ||
+        d.label.toLowerCase().includes("integrated")
+      );
+      const virtualCam = videoDevices.find(d =>
+        d.label.toLowerCase().includes("eshare") ||
+        d.label.toLowerCase().includes("virtual") ||
+        d.label.toLowerCase().includes("obs")
+      );
+      // Use physical cam if found, else use first non-virtual, else use default
+      const preferredCam = physicalCam || videoDevices.find(d => d !== virtualCam) || videoDevices[0];
+      console.log("Using camera:", preferredCam?.label || "default");
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: preferredCam
+          ? { deviceId: { exact: preferredCam.deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+          : { width: { ideal: 640 }, height: { ideal: 480 } }
+      });
+      streamRef.current = stream;
       videoEl.srcObject = stream;
-      videoEl.play();
+      videoEl.play().catch(e => console.log("Play interrupted:", e));
       setStatus("ready");
       setMessage(action === "register"
         ? "Position your face and click Capture"

@@ -292,8 +292,28 @@ function FaceLoginScanner({ onSuccess, onError, error, setError }) {
 
     (async () => {
       try {
+        // Pick physical USB camera over virtual (EShare etc.)
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === "videoinput");
+        const physicalCam = videoDevices.find(d =>
+          d.label.toLowerCase().includes("usb") ||
+          d.label.toLowerCase().includes("uvc") ||
+          d.label.toLowerCase().includes("webcam") ||
+          d.label.toLowerCase().includes("hd camera") ||
+          d.label.toLowerCase().includes("integrated")
+        );
+        const virtualCam = videoDevices.find(d =>
+          d.label.toLowerCase().includes("eshare") ||
+          d.label.toLowerCase().includes("virtual") ||
+          d.label.toLowerCase().includes("obs")
+        );
+        const preferredCam = physicalCam || videoDevices.find(d => d !== virtualCam) || videoDevices[0];
+        console.log("Login camera:", preferredCam?.label || "default");
+
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 } }
+          video: preferredCam
+            ? { deviceId: { exact: preferredCam.deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+            : { width: { ideal: 640 }, height: { ideal: 480 } }
         });
         if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
 

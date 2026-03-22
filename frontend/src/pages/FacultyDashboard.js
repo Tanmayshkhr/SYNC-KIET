@@ -86,12 +86,22 @@ const WeeklyTimetable = ({ schedule, dark }) => {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
   const hours = ["09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"];
   
-  // Build slot map: { "Monday-09:00": slotData }
+  // Build slot map for today's column only
+  // API returns slots for today without day field
+  // Use schedule.day to know which column they belong to
+  const todayName = schedule.day || "";
   const slotMap = {};
   (schedule.slots || []).forEach(slot => {
-    const day = slot.day || days[0];
-    const key = `${day}-${slot.start?.slice(0,5)}`;
-    slotMap[key] = slot;
+    // Slots belong to today's column
+    if (todayName && slot.start) {
+      const key = `${todayName}-${slot.start?.slice(0,5)}`;
+      slotMap[key] = slot;
+    }
+    // Also support if slot has explicit day
+    if (slot.day && slot.start) {
+      const key = `${slot.day}-${slot.start?.slice(0,5)}`;
+      slotMap[key] = slot;
+    }
   });
 
   const classColors = [
@@ -117,9 +127,15 @@ const WeeklyTimetable = ({ schedule, dark }) => {
         {/* Header row */}
         <div style={{ display: "grid", gridTemplateColumns: "60px repeat(5,1fr)", gap: 4, marginBottom: 4 }}>
           <div />
-          {days.map(d => (
-            <div key={d} style={{ fontSize: 12, fontWeight: 700, color: T.subText, textAlign: "center", padding: "6px 0" }}>{d.slice(0,3)}</div>
-          ))}
+          {days.map(d => {
+            const isToday = d === todayName;
+            return (
+              <div key={d} style={{ fontSize: 12, fontWeight: isToday ? 800 : 700, color: isToday ? PURPLE : T.subText, textAlign: "center", padding: "6px 0", background: isToday ? `${PURPLE}18` : "transparent", borderRadius: 8 }}>
+                {d.slice(0,3)}
+                {isToday && <div style={{ width: 4, height: 4, borderRadius: "50%", background: PURPLE, margin: "2px auto 0" }} />}
+              </div>
+            );
+          })}
         </div>
         {/* Time rows */}
         {hours.map(hour => (
@@ -214,6 +230,7 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
   const [notifDismissed, setNotifDismissed] = useState(localStorage.getItem("notifDismissed") === "true");
   const [faceStatus, setFaceStatus] = useState({ face_registered: false, manual_status: null });
   const [faceScanner, setFaceScanner] = useState(null);
+  const [showAnnouncements, setShowAnnouncements] = useState(false);
   const wsRef = useRef(null);
 
   const authH = { authorization: `Bearer ${user.token}` };
@@ -385,16 +402,37 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
         {page === "dashboard" && (
           <div className="fade-up">
 
-            {/* Announcement banner — CLICKABLE */}
+            {/* Announcement banner — CLICKABLE shows all */}
             {announcements.length > 0 && (
-              <div className="clickable-header" onClick={() => setPage("dashboard")}
-                style={{ background: `linear-gradient(135deg,${PURPLE}33,${BLUE}22)`, borderRadius: 12, padding: "12px 18px", marginBottom: 20, display: "flex", alignItems: "center", gap: 12, border: `1px solid ${PURPLE}44`, cursor: "pointer" }}>
-                <span style={{ fontSize: 20 }}>📢</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: ACCENT, letterSpacing: 1, marginBottom: 2 }}>ANNOUNCEMENT</div>
-                  <div style={{ fontSize: 13, color: T.text }}>{announcements[0].message}</div>
+              <div style={{ marginBottom: 20 }}>
+                <div className="clickable-header" onClick={() => setShowAnnouncements(!showAnnouncements)}
+                  style={{ background: `linear-gradient(135deg,${PURPLE}33,${BLUE}22)`, borderRadius: showAnnouncements ? "12px 12px 0 0" : 12, padding: "12px 18px", display: "flex", alignItems: "center", gap: 12, border: `1px solid ${PURPLE}44`, cursor: "pointer" }}>
+                  <span style={{ fontSize: 20 }}>📢</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: ACCENT, letterSpacing: 1, marginBottom: 2 }}>ANNOUNCEMENT</div>
+                    <div style={{ fontSize: 13, color: T.text }}>{announcements[0].message}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {announcements.length > 1 && <span style={{ fontSize: 11, color: T.muted, background: `${PURPLE}22`, padding: "2px 8px", borderRadius: 10 }}>{announcements.length} total</span>}
+                    <span style={{ fontSize: 16, color: ACCENT, transition: "transform 0.2s", transform: showAnnouncements ? "rotate(180deg)" : "rotate(0deg)" }}>⌄</span>
+                  </div>
                 </div>
-                {announcements.length > 1 && <span style={{ fontSize: 11, color: T.muted }}>{announcements.length} total →</span>}
+                {showAnnouncements && (
+                  <div style={{ background: T.cardBg, border: `1px solid ${PURPLE}44`, borderTop: "none", borderRadius: "0 0 12px 12px", maxHeight: 300, overflowY: "auto" }}>
+                    {announcements.map((ann, i) => (
+                      <div key={i} style={{ padding: "12px 18px", borderBottom: i < announcements.length - 1 ? `1px solid ${T.border}` : "none", display: "flex", gap: 12, alignItems: "flex-start" }}>
+                        <span style={{ fontSize: 16, marginTop: 1 }}>📢</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, color: T.text, lineHeight: 1.5 }}>{ann.message}</div>
+                          <div style={{ fontSize: 10, color: T.muted, marginTop: 4 }}>
+                            {ann.target && <span style={{ background: `${PURPLE}22`, color: ACCENT, padding: "1px 6px", borderRadius: 8, marginRight: 6, fontWeight: 700 }}>{ann.target}</span>}
+                            {ann.created_at?.slice(0, 16)?.replace("T", " ")}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -405,7 +443,14 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
                 <div style={{ position: "absolute", top: -20, right: -20, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.07)" }} />
                 <div style={{ position: "absolute", bottom: -30, right: 60, width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
                 <div style={{ fontSize: 10, color: "rgba(255,255,255,0.65)", fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>WELCOME BACK</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#fff", marginBottom: 4 }}>Hello, {user.name?.split(" ")[0]}!</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#fff", marginBottom: 4 }}>
+                  Hello, {(() => {
+                    const parts = (user.name || "").split(" ");
+                    const honorifics = ["mr.", "mrs.", "ms.", "dr.", "prof.", "mr", "mrs", "ms", "dr", "prof"];
+                    const firstName = parts.find(p => !honorifics.includes(p.toLowerCase())) || parts[0] || "Faculty";
+                    return firstName;
+                  })()}!
+                </div>
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", marginBottom: 14 }}>{user.subject || "Faculty"} · KIET</div>
                 <StatusDot status={currentStatus} />
               </div>
