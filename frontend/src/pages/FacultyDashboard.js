@@ -86,23 +86,27 @@ const WeeklyTimetable = ({ schedule, dark }) => {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
   const hours = ["09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"];
   
-  // Build slot map for today's column only
-  // API returns slots for today without day field
-  // Use schedule.day to know which column they belong to
   const todayName = schedule.day || "";
+
+  // Build slot map from weekly data (preferred) or today's slots
   const slotMap = {};
-  (schedule.slots || []).forEach(slot => {
-    // Slots belong to today's column
-    if (todayName && slot.start) {
+  const weekly = schedule.weekly || {};
+
+  if (Object.keys(weekly).length > 0) {
+    // Use full weekly data from API
+    days.forEach(day => {
+      (weekly[day] || []).forEach(slot => {
+        const key = `${day}-${slot.start?.slice(0,5)}`;
+        slotMap[key] = { ...slot, day };
+      });
+    });
+  } else {
+    // Fallback: use today's slots
+    (schedule.slots || []).forEach(slot => {
       const key = `${todayName}-${slot.start?.slice(0,5)}`;
-      slotMap[key] = slot;
-    }
-    // Also support if slot has explicit day
-    if (slot.day && slot.start) {
-      const key = `${slot.day}-${slot.start?.slice(0,5)}`;
-      slotMap[key] = slot;
-    }
-  });
+      slotMap[key] = { ...slot, day: todayName };
+    });
+  }
 
   const classColors = [
     { bg: "#7c3aed", border: "#5b21b6", text: "#fff" },
@@ -271,7 +275,7 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
     setLoading(false);
   };
   const fetchHistory = async () => { try { const r = await fetch(`${API}/doubts/faculty-history`, { headers: authH }); const d = await r.json(); setHistory(d.history || []); setHistoryStats({ total_completed: d.total_completed || 0, total_rejected: d.total_rejected || 0, total_group_sessions: d.total_group_sessions || 0 }); } catch {} };
-  const fetchSchedule = async () => { try { const r = await fetch(`${API}/timetable/my-schedule`, { headers: authH }); const d = await r.json(); setSchedule({ day: d.day || "", slots: d.slots || [] }); } catch {} };
+  const fetchSchedule = async () => { try { const r = await fetch(`${API}/timetable/my-schedule`, { headers: authH }); const d = await r.json(); setSchedule({ day: d.day || "", slots: d.slots || [], weekly: d.weekly || {} }); } catch {} };
 
   const acceptDoubt = async (doubt, groupDoubts = null) => {
     try {

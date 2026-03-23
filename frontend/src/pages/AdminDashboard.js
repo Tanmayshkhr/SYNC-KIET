@@ -413,6 +413,16 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
   const [showPass, setShowPass] = useState(false);
   const [showBulkPass, setShowBulkPass] = useState(false);
 
+  // Timetable states
+  const [timetables, setTimetables] = useState([]);
+  const [selectedFacultyCode, setSelectedFacultyCode] = useState("");
+  const [timetableSlots, setTimetableSlots] = useState([]);
+  const [ttLoading, setTtLoading] = useState(false);
+  const [ttSuccess, setTtSuccess] = useState("");
+  const [excelFile, setExcelFile] = useState(null);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [newSlot, setNewSlot] = useState({ day: "Monday", start: "09:00", end: "10:00", subject: "", section: "", room: "", class_type: "Lecture" });
+
   // Modals
   const [groupedModal, setGroupedModal] = useState(false);
   const [barDrill, setBarDrill] = useState(null);
@@ -425,6 +435,7 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
   useEffect(() => {
     if (page === "faculty") fetchFaculty();
     if (page === "students") fetchStudents();
+    if (page === "timetable") { fetchFaculty(); fetchTimetables(); }
   }, [page]);
 
   const fetchStats = async () => { try { const r = await fetch(`${API}/admin/stats`, { headers }); setStats(await r.json()); } catch {} };
@@ -432,6 +443,62 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
   const fetchStudents = async () => { setLoading(true); try { const r = await fetch(`${API}/admin/students`, { headers }); const d = await r.json(); setStudents(d.students || []); } catch {} setLoading(false); };
   const fetchDoubts = async () => { setLoading(true); try { const r = await fetch(`${API}/admin/doubts`, { headers }); const d = await r.json(); setDoubts(d.doubts || []); } catch {} setLoading(false); };
   const fetchAnnouncements = async () => { try { const r = await fetch(`${API}/admin/announcements`, { headers }); const d = await r.json(); setAnnouncements(d.announcements || []); } catch {} };
+
+  const fetchTimetables = async () => {
+    try { const r = await fetch(`${API}/timetable/all`, { headers }); const d = await r.json(); setTimetables(d.timetables || []); } catch {}
+  };
+
+  const handleSaveTimetable = async () => {
+    if (!selectedFacultyCode) return addToast("Select a faculty!", "warning");
+    if (timetableSlots.length === 0) return addToast("Add at least one slot!", "warning");
+    setTtLoading(true);
+    try {
+      const r = await fetch(`${API}/timetable/upload`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ faculty_code: selectedFacultyCode, slots: timetableSlots })
+      });
+      const d = await r.json();
+      if (r.ok) { addToast(d.message, "success"); setTtSuccess(d.message); fetchTimetables(); setTimetableSlots([]); setSelectedFacultyCode(""); }
+      else addToast(d.detail || "Failed!", "error");
+    } catch { addToast("Failed!", "error"); }
+    setTtLoading(false);
+  };
+
+  const handleExcelUpload = async () => {
+    if (!excelFile) return addToast("Select an Excel file!", "warning");
+    setExcelLoading(true);
+    const formData = new FormData();
+    formData.append("file", excelFile);
+    try {
+      const r = await fetch(`${API}/timetable/upload-excel`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${user.token}` },
+        body: formData
+      });
+      const d = await r.json();
+      if (r.ok) {
+        addToast(`Saved for ${d.saved?.length || 0} faculty!`, "success");
+        fetchTimetables();
+        setExcelFile(null);
+      } else addToast(d.detail || "Failed!", "error");
+    } catch { addToast("Upload failed!", "error"); }
+    setExcelLoading(false);
+  };
+
+  const handleDeleteTimetable = async (faculty_code) => {
+    if (!window.confirm(`Delete timetable for ${faculty_code}?`)) return;
+    try {
+      await fetch(`${API}/timetable/delete/${faculty_code}`, { method: "DELETE", headers });
+      addToast("Deleted!", "success"); fetchTimetables();
+    } catch { addToast("Failed!", "error"); }
+  };
+
+  const addSlot = () => {
+    if (!newSlot.subject) return addToast("Enter subject!", "warning");
+    setTimetableSlots(prev => [...prev, { ...newSlot, type: "class" }]);
+    setNewSlot({ day: "Monday", start: "09:00", end: "10:00", subject: "", section: "", room: "", class_type: "Lecture" });
+  };
 
   const handleResetPassword = async () => {
     if (!resetEmail || !resetPassword) return addToast("Fill all fields!", "warning");
@@ -509,6 +576,7 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
     { id: "doubts", icon: "📋", label: "Doubts" },
     { id: "faculty", icon: "👨‍🏫", label: "Faculty" },
     { id: "students", icon: "🎓", label: "Students" },
+    { id: "timetable", icon: "📅", label: "Timetable" },
     { id: "announcements", icon: "📢", label: "Announcements" },
     { id: "settings", icon: "⚙️", label: "Settings" },
   ];
@@ -889,6 +957,113 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TIMETABLE ─────────────────────────────────────────── */}
+          {page === "timetable" && (
+            <div className="fade-up">
+              <div style={{marginBottom:20}}>
+                <h2 style={{fontSize:22,fontWeight:800,color:theme.text,margin:0}}>📅 Timetable Manager</h2>
+                <p style={{color:theme.muted,fontSize:13,marginTop:4}}>Upload and manage faculty timetables</p>
+              </div>
+
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:20}}>
+                {/* Excel Upload */}
+                <div style={{background:theme.card,borderRadius:16,padding:24,border:`1px solid ${theme.border}`}}>
+                  <div style={{fontWeight:700,color:theme.text,fontSize:15,marginBottom:4}}>📊 Bulk Upload via Excel</div>
+                  <div style={{fontSize:12,color:theme.muted,marginBottom:16}}>Upload Excel with columns: faculty_code | day | start | end | subject | section | room | class_type</div>
+                  <div style={{background:theme.surface,borderRadius:10,padding:12,marginBottom:14,border:`1px solid ${theme.border}`,fontSize:11,color:theme.muted}}>
+                    <div style={{fontWeight:700,color:theme.text,marginBottom:6}}>📋 Excel Format:</div>
+                    <div style={{fontFamily:"monospace",fontSize:11}}>faculty_code | day | start | end | subject | section | room | class_type</div>
+                    <div style={{fontFamily:"monospace",fontSize:11,color:PURPLE}}>dp101 | Monday | 09:00 | 10:00 | ANN & ML | CS-A | 201 | Lecture</div>
+                    <div style={{fontFamily:"monospace",fontSize:11,color:PURPLE}}>dp101 | Tuesday | 10:00 | 11:00 | ANN & ML | CS-B | 202 | Lecture</div>
+                  </div>
+                  <input type="file" accept=".xlsx,.xls" onChange={e=>setExcelFile(e.target.files[0])}
+                    style={{width:"100%",padding:"10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:13,marginBottom:12,background:theme.card,color:theme.text,cursor:"pointer"}}/>
+                  {excelFile && <div style={{fontSize:12,color:PURPLE,marginBottom:12,fontWeight:600}}>📎 {excelFile.name}</div>}
+                  <button className="btn btn-primary" onClick={handleExcelUpload} disabled={excelLoading||!excelFile}
+                    style={{width:"100%",padding:"12px 0",fontSize:14,opacity:(excelLoading||!excelFile)?0.6:1}}>
+                    {excelLoading?"Uploading...":"📤 Upload Excel"}
+                  </button>
+                </div>
+
+                {/* Manual Entry */}
+                <div style={{background:theme.card,borderRadius:16,padding:24,border:`1px solid ${theme.border}`}}>
+                  <div style={{fontWeight:700,color:theme.text,fontSize:15,marginBottom:16}}>✏️ Manual Entry</div>
+                  <select value={selectedFacultyCode} onChange={e=>setSelectedFacultyCode(e.target.value)}
+                    style={{width:"100%",padding:"10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:13,marginBottom:12,background:theme.card,color:theme.text}}>
+                    <option value="">Select Faculty</option>
+                    {faculty.map(f=><option key={f.faculty_code} value={f.faculty_code}>{f.name} ({f.faculty_code})</option>)}
+                  </select>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                    <select value={newSlot.day} onChange={e=>setNewSlot({...newSlot,day:e.target.value})}
+                      style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text}}>
+                      {["Monday","Tuesday","Wednesday","Thursday","Friday"].map(d=><option key={d}>{d}</option>)}
+                    </select>
+                    <select value={newSlot.class_type} onChange={e=>setNewSlot({...newSlot,class_type:e.target.value})}
+                      style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text}}>
+                      {["Lecture","Lab","Tutorial"].map(t=><option key={t}>{t}</option>)}
+                    </select>
+                    <input value={newSlot.start} onChange={e=>setNewSlot({...newSlot,start:e.target.value})} type="time"
+                      style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text}}/>
+                    <input value={newSlot.end} onChange={e=>setNewSlot({...newSlot,end:e.target.value})} type="time"
+                      style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text}}/>
+                    <input value={newSlot.subject} onChange={e=>setNewSlot({...newSlot,subject:e.target.value})} placeholder="Subject"
+                      style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text}}/>
+                    <input value={newSlot.section} onChange={e=>setNewSlot({...newSlot,section:e.target.value})} placeholder="Section (e.g. CS-A)"
+                      style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text}}/>
+                    <input value={newSlot.room} onChange={e=>setNewSlot({...newSlot,room:e.target.value})} placeholder="Room No."
+                      style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text,gridColumn:"span 2"}}/>
+                  </div>
+                  <button className="btn btn-primary" onClick={addSlot} style={{width:"100%",padding:"9px 0",fontSize:13,marginBottom:12}}>+ Add Slot</button>
+                  {timetableSlots.length>0&&(
+                    <div style={{maxHeight:160,overflowY:"auto",marginBottom:12}}>
+                      {timetableSlots.map((s,i)=>(
+                        <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:theme.surface,borderRadius:8,marginBottom:4,fontSize:12}}>
+                          <span style={{color:theme.text,fontWeight:600}}>{s.day} {s.start}-{s.end} · {s.subject}</span>
+                          <button onClick={()=>setTimetableSlots(p=>p.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:RED,cursor:"pointer",fontSize:14}}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button className="btn btn-primary" onClick={handleSaveTimetable} disabled={ttLoading||!selectedFacultyCode||timetableSlots.length===0}
+                    style={{width:"100%",padding:"12px 0",fontSize:14,opacity:(ttLoading||!selectedFacultyCode||timetableSlots.length===0)?0.6:1}}>
+                    {ttLoading?"Saving...":"💾 Save Timetable"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Existing Timetables */}
+              <div style={{background:theme.card,borderRadius:16,padding:24,border:`1px solid ${theme.border}`}}>
+                <div style={{fontWeight:700,color:theme.text,fontSize:15,marginBottom:16}}>📋 Uploaded Timetables ({timetables.length})</div>
+                {timetables.length===0?(
+                  <div style={{textAlign:"center",padding:32,color:theme.muted}}><div style={{fontSize:32,marginBottom:8}}>📭</div>No timetables uploaded yet</div>
+                ):(
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+                    {timetables.map((t,i)=>(
+                      <div key={i} style={{background:theme.surface,borderRadius:12,padding:16,border:`1px solid ${theme.border}`}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                          <div>
+                            <div style={{fontWeight:700,color:theme.text,fontSize:14}}>{t.faculty_name}</div>
+                            <div style={{fontSize:11,color:PURPLE,fontWeight:600}}>{t.faculty_code}</div>
+                          </div>
+                          <button onClick={()=>handleDeleteTimetable(t.faculty_code)} style={{background:"none",border:"none",color:RED,cursor:"pointer",fontSize:18}}>🗑</button>
+                        </div>
+                        <div style={{fontSize:12,color:theme.muted,marginBottom:8}}>{t.slots?.length||0} slots uploaded</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                          {["Mon","Tue","Wed","Thu","Fri"].map(day=>{
+                            const fullDay = {Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday"}[day];
+                            const hasSlots = t.slots?.some(s=>s.day===fullDay);
+                            return <span key={day} style={{fontSize:10,padding:"2px 6px",borderRadius:6,background:hasSlots?`${PURPLE}22`:"transparent",color:hasSlots?PURPLE:theme.muted,fontWeight:hasSlots?700:400}}>{day}</span>;
+                          })}
+                        </div>
+                        <div style={{fontSize:10,color:theme.muted,marginTop:8}}>Updated: {t.updated_at?.slice(0,10)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
