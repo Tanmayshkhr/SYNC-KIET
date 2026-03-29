@@ -66,17 +66,35 @@ def faculty_signup(data: FacultySignup):
     return {"message": "Faculty registered successfully"}
 
 @router.post("/faculty/login")
-def faculty_login(data: FacultyLogin):
+async def faculty_login(data: FacultyLogin):
     faculty = db.faculty.find_one({"email": data.email})
     if not faculty:
         raise HTTPException(401, "Invalid credentials")
     if not bcrypt.checkpw(data.password.encode("utf-8"), faculty["password"]):
         raise HTTPException(401, "Invalid credentials")
+
+    checked_in_at = datetime.utcnow()
+    db.faculty.update_one(
+        {"_id": faculty["_id"]},
+        {"$set": {
+            "manual_status": "available",
+            "last_scan_at": checked_in_at,
+            "last_scan_action": "manual_login"
+        }}
+    )
+
     token = create_token({
         "id": str(faculty["_id"]),
         "role": "faculty",
         "name": faculty["name"]
     })
+
+    try:
+        from main import manager
+        await manager.broadcast("refresh")
+    except Exception:
+        pass
+
     return {"token": token, "name": faculty["name"], "role": "faculty",
             "needs_security_setup": "security_question" not in faculty or not faculty.get("security_question") or not faculty.get("password_changed")}
 @router.post("/forgot-password/student")

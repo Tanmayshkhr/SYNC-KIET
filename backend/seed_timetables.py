@@ -1,163 +1,158 @@
 """
-PuchoKIET - Complete Timetable Seed Script
-Seeds timetable data for all 26 faculty members
-Run: python seed_timetables.py
+Seed faculty timetables in the exact `faculty.timetable` format consumed by
+`backend/routes/timetable.py`.
+
+This script intentionally seeds:
+- Monday to Friday only
+- no Sunday or Saturday timetable entries
+- 8 instructional periods with the lunch break between periods 4 and 5
+- at least 5 classes per faculty per working day
 """
 
 from pymongo import MongoClient
-import random
 
 client = MongoClient("mongodb://localhost:27017")
 db = client["synckiet"]
 
-# TIME SLOTS (same as routes/timetable.py)
+WORKING_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
 TIME_SLOTS = {
     1: {"start": "09:10", "end": "10:00"},
     2: {"start": "10:00", "end": "10:50"},
     3: {"start": "10:50", "end": "11:40"},
     4: {"start": "11:40", "end": "12:30"},
-    # Period 5 = Lunch 12:30 - 13:20
-    5: {"start": "13:20", "end": "14:10"},
-    6: {"start": "14:10", "end": "15:00"},
-    7: {"start": "15:00", "end": "15:50"},
+    5: {"start": "13:30", "end": "14:20"},
+    6: {"start": "14:20", "end": "15:10"},
+    7: {"start": "15:10", "end": "16:00"},
+    8: {"start": "16:00", "end": "16:50"},
 }
 
-DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-
-# All 26 faculty with their subjects
-FACULTY_LIST = [
-    {"code": "ABG", "name": "Dr. Abhishek Goyal",        "subject": "Web Technology"},
-    {"code": "ATJ", "name": "Dr. Aatif Jamshed",         "subject": "Web Technology"},
-    {"code": "ABS", "name": "Mr. Abhishek Sharma",       "subject": "Web Technology"},
-    {"code": "AG",  "name": "Dr. Akash Goel",            "subject": "Web Technology"},
-    {"code": "VKS", "name": "Mr. Vivek Kumar Sharma",    "subject": "Design and Analysis of Algorithms"},
-    {"code": "RK",  "name": "Dr. Raj Kumar",             "subject": "Design and Analysis of Algorithms"},
-    {"code": "KKA", "name": "Mr. Kuldeep Kumar Atariya", "subject": "Design and Analysis of Algorithms"},
-    {"code": "TSH", "name": "Mr. Tarsh Vaibhav",         "subject": "Design and Analysis of Algorithms"},
-    {"code": "DP",  "name": "Mr. Dheeraj Pandey",        "subject": "ANN and Machine Learning"},
-    {"code": "AM",  "name": "Dr. Anurag Mishra",         "subject": "ANN and Machine Learning"},
-    {"code": "KS",  "name": "Ms. Kirti Sharma",          "subject": "ANN and Machine Learning"},
-    {"code": "BKG", "name": "Mr. Bhagvan Krishan Gupta", "subject": "ANN and Machine Learning"},
-    {"code": "SKR", "name": "Dr. Sunil Kumar",           "subject": "Computer Networks"},
-    {"code": "RR",  "name": "Mr. Rohan Rathore",         "subject": "Computer Networks"},
-    {"code": "PKP", "name": "Mr. Pawan Kumar Pal",       "subject": "Computer Networks"},
-    {"code": "NS",  "name": "Mr. Nikhil Saraswat",       "subject": "Computer Networks"},
-    {"code": "TRL", "name": "Ms. Tarul",                 "subject": "Data Analytics"},
-    {"code": "PRI", "name": "Ms. Priya Raghuvanshi",     "subject": "Data Analytics"},
-    {"code": "MT",  "name": "Mr. Mohit Singh Tanwar",    "subject": "Data Analytics"},
-    {"code": "RA",  "name": "Mr. Rahul",                 "subject": "Data Analytics"},
-    {"code": "AS",  "name": "Ms. Arti Sharma",           "subject": "Universal Human Values"},
-    {"code": "ADJ", "name": "Ms. Aditi Joshi",           "subject": "Universal Human Values"},
-    {"code": "ST",  "name": "Mr. Shubham Tyagi",         "subject": "Aptitude"},
-    {"code": "MK",  "name": "Dr. Meetu Kumar",           "subject": "Soft Skills"},
-    {"code": "HS",  "name": "Mr. Himanshu Saxena",       "subject": "Soft Skills"},
-    {"code": "SG",  "name": "Mr. Sreesh Gaur",           "subject": "Advance Data Structures"},
+PATTERN_LIBRARY = [
+    {"Monday": [1, 2, 3, 5, 6, 8], "Tuesday": [1, 2, 4, 5, 7], "Wednesday": [2, 3, 4, 6, 7, 8], "Thursday": [1, 3, 4, 5, 6], "Friday": [1, 2, 5, 7, 8]},
+    {"Monday": [1, 2, 4, 5, 7], "Tuesday": [1, 3, 4, 6, 7, 8], "Wednesday": [1, 2, 5, 6, 8], "Thursday": [2, 3, 4, 5, 7], "Friday": [1, 3, 5, 6, 7, 8]},
+    {"Monday": [1, 3, 4, 5, 6], "Tuesday": [2, 3, 5, 7, 8], "Wednesday": [1, 2, 4, 5, 6], "Thursday": [1, 2, 3, 6, 8], "Friday": [2, 4, 5, 7, 8]},
+    {"Monday": [2, 3, 4, 6, 7, 8], "Tuesday": [1, 2, 5, 6, 8], "Wednesday": [1, 3, 4, 5, 7], "Thursday": [2, 3, 5, 6, 7], "Friday": [1, 2, 4, 5, 8]},
+    {"Monday": [1, 2, 5, 6, 7], "Tuesday": [1, 3, 4, 5, 8], "Wednesday": [2, 3, 4, 6, 7, 8], "Thursday": [1, 2, 4, 5, 6], "Friday": [1, 3, 5, 7, 8]},
+    {"Monday": [1, 4, 5, 6, 8], "Tuesday": [2, 3, 4, 5, 7], "Wednesday": [1, 2, 3, 6, 7, 8], "Thursday": [1, 3, 5, 6, 8], "Friday": [2, 4, 5, 6, 7]},
 ]
 
-# Sections taught per subject (realistic for KIET CS 2nd year)
-SECTIONS = ["CS4A", "CS4B", "CS4C", "CS4D"]
+FACULTY_LIST = [
+    {"code": "ABG", "name": "Dr. Abhishek Goyal", "subject": "Web Technology"},
+    {"code": "ATJ", "name": "Dr. Aatif Jamshed", "subject": "Web Technology"},
+    {"code": "ABS", "name": "Mr. Abhishek Sharma", "subject": "Web Technology"},
+    {"code": "VKS", "name": "Mr. Vivek Kumar Sharma", "subject": "Design and Analysis of Algorithms"},
+    {"code": "RK", "name": "Dr. Raj Kumar", "subject": "Design and Analysis of Algorithms"},
+    {"code": "KKA", "name": "Mr. Kuldeep Kumar Atariya", "subject": "Design and Analysis of Algorithms"},
+    {"code": "TSH", "name": "Mr. Tarsh Vaibhav", "subject": "Design and Analysis of Algorithms"},
+    {"code": "DP", "name": "Mr. Dheeraj Pandey", "subject": "ANN and Machine Learning"},
+    {"code": "AM", "name": "Dr. Anurag Mishra", "subject": "ANN and Machine Learning"},
+    {"code": "KS", "name": "Ms. Kirti Sharma", "subject": "ANN and Machine Learning"},
+    {"code": "BKG", "name": "Mr. Bhagvan Krishan Gupta", "subject": "ANN and Machine Learning"},
+    {"code": "AG", "name": "Dr. Akash Goel", "subject": "Web Technology"},
+    {"code": "SKR", "name": "Dr. Sunil Kumar", "subject": "Computer Networks"},
+    {"code": "RR", "name": "Mr. Rohan Rathore", "subject": "Computer Networks"},
+    {"code": "PKP", "name": "Mr. Pawan Kumar Pal", "subject": "Computer Networks"},
+    {"code": "NS", "name": "Mr. Nikhil Saraswat", "subject": "Computer Networks"},
+    {"code": "TRL", "name": "Ms. Tarul", "subject": "Data Analytics"},
+    {"code": "PRI", "name": "Ms. Priya Raghuvanshi", "subject": "Data Analytics"},
+    {"code": "MT", "name": "Mr. Mohit Singh Tanwar", "subject": "Data Analytics"},
+    {"code": "RA", "name": "Mr. Rahul", "subject": "Data Analytics"},
+    {"code": "AS", "name": "Ms. Arti Sharma", "subject": "Universal Human Values"},
+    {"code": "ADJ", "name": "Ms. Aditi Joshi", "subject": "Universal Human Values"},
+    {"code": "ST", "name": "Mr. Shubham Tyagi", "subject": "Aptitude"},
+    {"code": "MK", "name": "Dr. Meetu Kumar", "subject": "Soft Skills"},
+    {"code": "HS", "name": "Mr. Himanshu Saxena", "subject": "Soft Skills"},
+    {"code": "SG", "name": "Mr. Sreesh Gaur", "subject": "Advance Data Structures"},
+]
 
-def generate_timetable(faculty_code, subject):
-    """
-    Generate a realistic weekly timetable for a faculty member.
-    - Each faculty teaches roughly 4-5 theory periods per week
-    - Labs are 2 consecutive periods
-    - No two classes same period same day
-    - Saturday is usually light (1-2 classes max)
-    """
+SECTION_POOLS = {
+    "Web Technology": ["CS4A", "CS4B", "CS4C", "CS4D"],
+    "Design and Analysis of Algorithms": ["CS4A", "CS4B", "CS4C", "CS4D"],
+    "ANN and Machine Learning": ["CS4A", "CS4B", "CS4C", "CS4D"],
+    "Computer Networks": ["CS4A", "CS4B", "CS4C", "CS4D"],
+    "Data Analytics": ["CS4A", "CS4B", "CS4C", "CS4D"],
+    "Advance Data Structures": ["CS4A", "CS4B", "CS4C"],
+    "Universal Human Values": ["CS4A", "CS4B", "CS4C", "CS4D"],
+    "Aptitude": ["CS4A", "CS4B", "CS4C", "CS4D"],
+    "Soft Skills": ["CS4A", "CS4B", "CS4C", "CS4D"],
+}
+
+ROOM_POOLS = {
+    "Web Technology": ["C-301", "C-303", "WT-LAB-1"],
+    "Design and Analysis of Algorithms": ["C-304", "C-305", "C-307"],
+    "ANN and Machine Learning": ["AI-LAB-1", "C-308", "C-309"],
+    "Computer Networks": ["CN-LAB-1", "C-310", "C-312"],
+    "Data Analytics": ["DA-LAB-1", "C-313", "C-315"],
+    "Advance Data Structures": ["C-316", "C-318", "ADS-LAB"],
+    "Universal Human Values": ["H-201", "H-202", "Seminar Hall 1"],
+    "Aptitude": ["APT-1", "APT-2", "Seminar Hall 2"],
+    "Soft Skills": ["SS-101", "Language Lab", "Seminar Hall 3"],
+}
+
+
+def get_class_type(subject, period, faculty_index, day_index):
+    if subject in {"Universal Human Values", "Aptitude", "Soft Skills"}:
+        return "tutorial" if (faculty_index + day_index + period) % 4 == 0 else "theory"
+
+    if subject in {"Web Technology", "ANN and Machine Learning", "Computer Networks", "Data Analytics"}:
+        if period in {5, 6} and (faculty_index + day_index) % 3 == 0:
+            return "lab"
+
+    return "theory"
+
+
+def build_timetable(faculty, faculty_index):
+    subject = faculty["subject"]
+    sections = SECTION_POOLS[subject]
+    rooms = ROOM_POOLS[subject]
+    pattern = PATTERN_LIBRARY[faculty_index % len(PATTERN_LIBRARY)]
     timetable = {}
 
-    # Decide how many sections this faculty teaches
-    # Web Tech / DAA / ML / CN faculty teach 1-2 sections
-    # UHV / Aptitude / Soft Skills teach all 4 sections (common subjects)
-    if subject in ["Universal Human Values", "Aptitude", "Soft Skills"]:
-        sections_teaching = SECTIONS  # all 4
-        periods_per_week = 8  # 2 per section
-    else:
-        sections_teaching = random.sample(SECTIONS, random.choice([1, 2]))
-        periods_per_week = len(sections_teaching) * 3  # 3 per section per week
-
-    # Assign periods across days
-    assigned = []
-    attempts = 0
-
-    while len(assigned) < periods_per_week and attempts < 200:
-        attempts += 1
-        day = random.choice(DAYS)
-        period = random.choice(list(TIME_SLOTS.keys()))
-
-        # Saturday max 2 periods
-        saturday_count = sum(1 for a in assigned if a["day"] == "Saturday")
-        if day == "Saturday" and saturday_count >= 2:
-            continue
-
-        # Max 3 periods per day
-        day_count = sum(1 for a in assigned if a["day"] == day)
-        if day_count >= 3:
-            continue
-
-        # No duplicate day+period
-        if any(a["day"] == day and a["period"] == period for a in assigned):
-            continue
-
-        section = random.choice(sections_teaching)
-        assigned.append({
-            "day": day,
-            "period": period,
-            "section": section,
-            "subject": subject
-        })
-
-    # Build timetable dict by day
-    for day in DAYS:
+    for day_index, day in enumerate(WORKING_DAYS):
         day_schedule = {}
-        for entry in assigned:
-            if entry["day"] == day:
-                slot = TIME_SLOTS[entry["period"]]
-                day_schedule[str(entry["period"])] = {
-                    "subject": entry["subject"],
-                    "section": entry["section"],
-                    "start": slot["start"],
-                    "end": slot["end"],
-                    "type": "theory"
-                }
+        periods = pattern[day]
+
+        for slot_index, period in enumerate(periods):
+            section = sections[(faculty_index + day_index + slot_index) % len(sections)]
+            room = rooms[(faculty_index + day_index + slot_index) % len(rooms)]
+            day_schedule[str(period)] = {
+                "subject": subject,
+                "section": section,
+                "type": get_class_type(subject, period, faculty_index, day_index),
+                "room": room,
+            }
+
         timetable[day] = day_schedule
 
     return timetable
 
 
 def seed_timetables():
-    print("Seeding timetables for all 26 faculty...")
-    print("-" * 50)
+    print("Seeding faculty timetables...")
+    print("-" * 48)
 
-    success = 0
-    for faculty in FACULTY_LIST:
-        code = faculty["code"]
-        subject = faculty["subject"]
-
-        # Generate timetable
-        timetable = generate_timetable(code, subject)
-
-        # Count total periods
-        total_periods = sum(len(v) for v in timetable.values())
-
-        # Update faculty document in MongoDB
+    seeded = 0
+    for faculty_index, faculty in enumerate(FACULTY_LIST):
+        timetable = build_timetable(faculty, faculty_index)
         result = db.faculty.update_one(
-            {"faculty_code": code},
-            {"$set": {
-                "timetable": timetable,
-                "timetable_updated": True
-            }}
+            {"faculty_code": faculty["code"]},
+            {
+                "$set": {
+                    "timetable": timetable,
+                    "timetable_updated": True,
+                }
+            },
         )
 
-        if result.matched_count > 0:
-            print(f"✓ {faculty['name']} ({code}) → {total_periods} periods/week")
-            success += 1
+        daily_counts = {day: len(periods) for day, periods in timetable.items()}
+        if result.matched_count:
+            print(f"[OK] {faculty['code']} -> {daily_counts}")
+            seeded += 1
         else:
-            print(f"✗ {faculty['name']} ({code}) → NOT FOUND in DB")
+            print(f"[MISS] {faculty['code']} not found in faculty collection")
 
-    print("-" * 50)
-    print(f"Done! {success}/26 faculty timetables seeded.")
+    print("-" * 48)
+    print(f"Completed: {seeded}/{len(FACULTY_LIST)} faculty timetables seeded")
 
 
 if __name__ == "__main__":

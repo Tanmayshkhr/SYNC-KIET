@@ -310,9 +310,15 @@ def get_face_status(authorization: str = Header(...)):
 
     _load_deps()
     faculty = db.faculty.find_one({"_id": ObjectId(user["id"])})
+    last_scan_at = faculty.get("last_scan_at")
+    manual_status = faculty.get("manual_status")
+
+    if not isinstance(last_scan_at, datetime) or last_scan_at.date() != datetime.utcnow().date():
+        manual_status = None
+
     return {
         "face_registered": faculty.get("face_registered", False),
-        "manual_status": faculty.get("manual_status"),
+        "manual_status": manual_status,
         "last_scan_at": str(faculty.get("last_scan_at", "")),
         "last_scan_action": faculty.get("last_scan_action"),
         "engine": FR_ENGINE or "none"

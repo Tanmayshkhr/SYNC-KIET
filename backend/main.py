@@ -62,10 +62,26 @@ class ConnectionManager:
         await websocket.send_text(message)
 
 manager = ConnectionManager()
+scheduled_transition_task = None
+
+
+async def watch_scheduled_doubt_transitions():
+    while True:
+        try:
+            from routes.doubts import promote_due_scheduled_doubts
+
+            promoted_count = promote_due_scheduled_doubts()
+            if promoted_count:
+                await manager.broadcast("refresh")
+        except Exception as e:
+            print(f"Scheduled transition watcher error: {e}")
+
+        await asyncio.sleep(20)
 
 # ── Startup: Create DB indexes for performance ─────────────────────────
 @app.on_event("startup")
 async def startup():
+    global scheduled_transition_task
     from pymongo import MongoClient, ASCENDING, DESCENDING
     client = MongoClient(os.getenv("MONGO_URL", "mongodb://localhost:27017"))
     db = client["synckiet"]
@@ -84,6 +100,21 @@ async def startup():
         print("✅ MongoDB indexes created successfully")
     except Exception as e:
         print(f"Index creation: {e}")
+
+    if scheduled_transition_task is None or scheduled_transition_task.done():
+        scheduled_transition_task = asyncio.create_task(watch_scheduled_doubt_transitions())
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    global scheduled_transition_task
+    if scheduled_transition_task and not scheduled_transition_task.done():
+        scheduled_transition_task.cancel()
+        try:
+            await scheduled_transition_task
+        except asyncio.CancelledError:
+            pass
+    scheduled_transition_task = None
 
 # ── Routes ─────────────────────────────────────────────────────────────
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])

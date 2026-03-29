@@ -36,8 +36,12 @@ const styles = `
 const StatusBadge = ({ status }) => {
   const config = {
     available:{label:"Available",color:"#16a34a",bg:"#dcfce7"},
-    busy:{label:"In Class",color:"#2563eb",bg:"#dbeafe"},
+    in_class:{label:"In Class",color:"#2563eb",bg:"#dbeafe"},
+    busy:{label:"Busy",color:"#dc2626",bg:"#fee2e2"},
+    scheduled:{label:"Scheduled",color:"#7c3aed",bg:"#ede9fe"},
     lunch:{label:"Lunch",color:"#d97706",bg:"#fef3c7"},
+    holiday:{label:"Holiday",color:"#7c3aed",bg:"#ede9fe"},
+    not_checked_in:{label:"Not Checked In",color:"#94a3b8",bg:"#f1f5f9"},
     not_arrived:{label:"Not Arrived",color:"#94a3b8",bg:"#f1f5f9"},
     left:{label:"Left",color:"#dc2626",bg:"#fee2e2"},
     pending:{label:"Pending",color:"#d97706",bg:"#fef3c7"},
@@ -48,10 +52,24 @@ const StatusBadge = ({ status }) => {
   return (
     <span style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:20,background:config.bg,fontSize:11,fontWeight:700,color:config.color}}>
       {status==="available"&&(<span style={{position:"relative",width:7,height:7,display:"inline-block"}}><span style={{position:"absolute",inset:0,borderRadius:"50%",background:config.color,opacity:0.4,animation:"pulseRing 1.5s ease-out infinite"}}/><span style={{position:"absolute",inset:1,borderRadius:"50%",background:config.color}}/></span>)}
-      {status==="busy"&&<span style={{width:7,height:7,borderRadius:"50%",border:`2px solid ${config.color}`,borderTopColor:"transparent",display:"inline-block",animation:"spin 0.8s linear infinite"}}/>}
+      {(status==="busy"||status==="in_class")&&<span style={{width:7,height:7,borderRadius:"50%",border:`2px solid ${config.color}`,borderTopColor:"transparent",display:"inline-block",animation:"spin 0.8s linear infinite"}}/>}
       {config.label}
     </span>
   );
+};
+
+const formatBookedSlot = (doubt) => {
+  if (!doubt?.scheduled_day || !doubt?.scheduled_start || !doubt?.scheduled_end) return "";
+  return `${doubt.scheduled_day} | ${doubt.scheduled_start} - ${doubt.scheduled_end}`;
+};
+
+const formatFacultySlot = (slot) => {
+  if (!slot) return "Not available";
+  if (typeof slot === "string") return slot;
+  if (slot.label) return slot.label;
+  if (slot.day && slot.start && slot.end) return `${slot.day} | ${slot.start} - ${slot.end}`;
+  if (slot.start && slot.end) return `${slot.start} - ${slot.end}`;
+  return "Not available";
 };
 
 const Confetti = () => {
@@ -154,7 +172,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
     .filter(f=>subjectFilter?f.subject===subjectFilter:true)
     .filter(f=>availFilter?f.status===availFilter:true)
     .sort((a,b)=>{
-      if(sortBy==="available"){const o={available:0,lunch:1,busy:2,not_arrived:3,left:4};return(o[a.status]??5)-(o[b.status]??5);}
+      if(sortBy==="available"){const o={available:0,in_class:1,busy:2,lunch:3,not_checked_in:4,holiday:5,not_arrived:6,left:7};return(o[a.status]??8)-(o[b.status]??8);}
       if(sortBy==="name")return a.faculty_name?.localeCompare(b.faculty_name);
       if(sortBy==="queue")return(a.queue_count||0)-(b.queue_count||0);
       return 0;
@@ -173,6 +191,28 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
     return()=>{if(wsRef.current)wsRef.current.close();};
   },[]);
 
+  useEffect(()=>{
+    const remindForScheduledDoubts=()=>{
+      const now=Date.now();
+      myDoubts
+        .filter(d=>d.status==="scheduled"&&d.reminder_at&&d.scheduled_for)
+        .forEach(doubt=>{
+          const reminderAt=new Date(doubt.reminder_at).getTime();
+          const scheduledFor=new Date(doubt.scheduled_for).getTime();
+          const reminderKey=`doubt-reminder-${doubt._id}`;
+          if(Number.isNaN(reminderAt)||Number.isNaN(scheduledFor))return;
+          if(now>=reminderAt&&now<=scheduledFor+5*60*1000&&!localStorage.getItem(reminderKey)){
+            sendNotification("Doubt reminder",`${doubt.topic} with ${doubt.faculty_name||"faculty"} starts at ${doubt.scheduled_start}.`);
+            localStorage.setItem(reminderKey,"sent");
+          }
+        });
+    };
+
+    remindForScheduledDoubts();
+    const timer=setInterval(remindForScheduledDoubts,60000);
+    return()=>clearInterval(timer);
+  },[myDoubts]);
+
   const requestNotificationPermission=async()=>{if("Notification"in window)await Notification.requestPermission();};
   const sendNotification=(title,body)=>{if("Notification"in window&&Notification.permission==="granted")new Notification(title,{body,icon:"/favicon.ico"});};
   const fetchFaculty=async()=>{try{const res=await fetch(`${API}/timetable/all-faculty-status`);const data=await res.json();setFaculty(data.faculty||[]);}catch{}setLoading(false);};
@@ -184,6 +224,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
       newDoubts.forEach(nd=>{
         const od=myDoubts.find(d=>d._id===nd._id);
         if(od&&od.status!==nd.status){
+          if(nd.status==="scheduled")sendNotification("Doubt scheduled",`${nd.topic} is booked for ${formatBookedSlot(nd) || `${nd.scheduled_day} at ${nd.scheduled_start}`}.`);
           if(nd.status==="active")sendNotification("Your turn!",`${nd.topic} session started!`);
           if(nd.status==="completed"){sendNotification("Done!",`${nd.topic} resolved.`);setShowConfetti(true);setTimeout(()=>setShowConfetti(false),3000);}
           if(nd.status==="rejected")sendNotification("Rejected",`${nd.topic}: ${nd.reject_reason||""}`);
@@ -204,12 +245,13 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
 
   if(resubmitDoubt){
     const fac=faculty.find(f=>f._id===resubmitDoubt.faculty_id||f.faculty_name===resubmitDoubt.faculty_name);
-    return(<SubmitDoubt darkMode={darkMode} user={user} faculty={fac||selectedFaculty} resubmitData={{topic:resubmitDoubt.topic,subject:resubmitDoubt.subject,description:resubmitDoubt.description}} onBack={()=>setResubmitDoubt(null)} onSubmitted={()=>{setResubmitDoubt(null);setPage("mydoubts");fetchMyDoubts();}}/>);
+    return(<SubmitDoubt darkMode={darkMode} user={user} faculty={fac||selectedFaculty} resubmitData={{topic:resubmitDoubt.topic,subject:resubmitDoubt.subject,description:resubmitDoubt.description,reject_reason:resubmitDoubt.reject_reason}} onBack={()=>setResubmitDoubt(null)} onSubmitted={()=>{setResubmitDoubt(null);setPage("mydoubts");fetchMyDoubts();}}/>);
   }
   if(page==="submit")return(<SubmitDoubt darkMode={darkMode} user={user} faculty={selectedFaculty} onBack={()=>setPage("home")} onSubmitted={()=>{setPage("mydoubts");fetchMyDoubts();}}/>);
 
   const navItems=[{id:"home",icon:"⊞",label:"Dashboard"},{id:"mydoubts",icon:"📋",label:"My Doubts"},{id:"analytics",icon:"📊",label:"Analytics"}];
   const pendingCount=myDoubts.filter(d=>d.status==="pending").length;
+  const scheduledCount=myDoubts.filter(d=>d.status==="scheduled").length;
   const activeCount=myDoubts.filter(d=>d.status==="active").length;
   const completedCount=myDoubts.filter(d=>d.status==="completed").length;
   const availableFaculty=faculty.filter(f=>f.status==="available").length;
@@ -232,7 +274,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
               style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",borderRadius:12,background:page===item.id?"rgba(255,255,255,0.22)":"transparent"}}>
               <span style={{fontSize:16}}>{item.icon}</span>
               <span style={{fontSize:14,fontWeight:page===item.id?700:500,color:page===item.id?"#fff":"rgba(255,255,255,0.72)"}}>{item.label}</span>
-              {item.id==="mydoubts"&&(pendingCount+activeCount)>0&&(<span style={{marginLeft:"auto",background:"#fbbf24",color:"#1a1a1a",fontSize:10,fontWeight:800,borderRadius:10,padding:"1px 6px"}}>{pendingCount+activeCount}</span>)}
+              {item.id==="mydoubts"&&(pendingCount+scheduledCount+activeCount)>0&&(<span style={{marginLeft:"auto",background:"#fbbf24",color:"#1a1a1a",fontSize:10,fontWeight:800,borderRadius:10,padding:"1px 6px"}}>{pendingCount+scheduledCount+activeCount}</span>)}
             </div>
           ))}
         </nav>
@@ -275,6 +317,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
                   {label:"Available Faculty",value:availableFaculty,color:"#a7f3d0",action:()=>{setAvailFilter("available");document.getElementById("faculty-grid")?.scrollIntoView({behavior:"smooth"});}},
                   {label:"My Pending",value:pendingCount,color:"#fde68a",action:()=>setPage("mydoubts")},
                   {label:"Resolved",value:completedCount,color:"#c4b5fd",action:()=>setPage("analytics")},
+                  {label:"Scheduled Doubts",value:scheduledCount,color:"#ddd6fe",action:()=>setPage("mydoubts")},
                 ].map((s,i)=>(
                   <div key={i} className="stat-chip" onClick={s.action} style={{background:"rgba(255,255,255,0.12)",borderRadius:12,padding:"10px 18px",backdropFilter:"blur(8px)",boxShadow:"0 2px 8px rgba(0,0,0,0.1)"}}>
                     <div style={{fontSize:22,fontWeight:800,color:s.color}}>{s.value}</div>
@@ -363,9 +406,10 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
                   <select value={availFilter} onChange={e=>setAvailFilter(e.target.value)} style={{padding:"9px 12px",borderRadius:10,border:`1.5px solid ${borderColor}`,fontSize:12,outline:"none",color:subColor,background:cardBg}}>
                     <option value="">All Status</option>
                     <option value="available">Available Now</option>
-                    <option value="busy">In Class</option>
-                    <option value="lunch">Lunch</option>
-                    <option value="not_arrived">Not Arrived</option>
+                    <option value="in_class">In Class</option>
+                    <option value="busy">Busy</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="not_checked_in">Not Checked In</option>
                     <option value="left">Left</option>
                   </select>
                   <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{padding:"9px 12px",borderRadius:10,border:`1.5px solid ${borderColor}`,fontSize:12,outline:"none",color:subColor,background:cardBg}}>
@@ -396,10 +440,27 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
                             </div>
                             <StatusBadge status={f.status}/>
                           </div>
-                          {f.cabin&&<div style={{fontSize:11,color:subColor,marginBottom:4}}>📍 Cabin {f.cabin} · {f.block}</div>}
-                          {f.free_slots_today?.length>0&&(<div style={{fontSize:11,color:"#059669",background:"#f0fdf4",borderRadius:6,padding:"4px 8px",display:"inline-block",marginBottom:8}}>🕒 Next free: <b>{f.free_slots_today[0]?.start}</b></div>)}
-                          {f.queue_count>0&&<div style={{fontSize:11,color:"#d97706",background:"#fef3c7",borderRadius:6,padding:"3px 8px",display:"inline-block",marginBottom:8}}>👥 {f.queue_count} in queue</div>}
-                          <button onClick={()=>{setSelectedFaculty(f);setPage("submit");}} className="btn-purple" style={{width:"100%",padding:"10px 0",fontSize:13,marginTop:8,borderRadius:10}}>Submit Doubt →</button>
+                          {f.cabin&&<div style={{fontSize:11,color:subColor,marginBottom:4}}>Cabin {f.cabin} | {f.block}</div>}
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10,marginBottom:10}}>
+                            <div style={{background:isDark?"#0f0e1a":"#fafaf9",borderRadius:10,padding:"9px 10px",border:`1px solid ${borderColor}`}}>
+                              <div style={{fontSize:10,color:subColor,marginBottom:3}}>Current Status</div>
+                              <div style={{fontSize:12,fontWeight:700,color:textColor,textTransform:"capitalize"}}>{f.status?.replaceAll("_"," ")}</div>
+                            </div>
+                            <div style={{background:isDark?"#0f0e1a":"#fafaf9",borderRadius:10,padding:"9px 10px",border:`1px solid ${borderColor}`}}>
+                              <div style={{fontSize:10,color:subColor,marginBottom:3}}>Queue Length</div>
+                              <div style={{fontSize:12,fontWeight:700,color:textColor}}>{f.queue_count || 0} student{(f.queue_count || 0) === 1 ? "" : "s"}</div>
+                            </div>
+                            <div style={{background:isDark?"#0f0e1a":"#fafaf9",borderRadius:10,padding:"9px 10px",border:`1px solid ${borderColor}`}}>
+                              <div style={{fontSize:10,color:subColor,marginBottom:3}}>Estimated Wait</div>
+                              <div style={{fontSize:12,fontWeight:700,color:textColor}}>{f.estimated_wait || "Not available"}</div>
+                            </div>
+                            <div style={{background:isDark?"#0f0e1a":"#fafaf9",borderRadius:10,padding:"9px 10px",border:`1px solid ${borderColor}`}}>
+                              <div style={{fontSize:10,color:subColor,marginBottom:3}}>Next Free Slot</div>
+                              <div style={{fontSize:12,fontWeight:700,color:textColor}}>{formatFacultySlot(f.next_free_slot || f.free_slots_today?.[0])}</div>
+                            </div>
+                          </div>
+                          {f.expected_free_time&&<div style={{fontSize:11,color:PURPLE,fontWeight:600,marginBottom:10}}>Expected free by {f.expected_free_time}</div>}
+                          <button onClick={()=>{setSelectedFaculty(f);setPage("submit");}} className="btn-purple" style={{width:"100%",padding:"10px 0",fontSize:13,marginTop:8,borderRadius:10}}>Submit Doubt</button>
                         </div>
                       ))}
                     </div>
@@ -446,7 +507,7 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
         {/* MY DOUBTS PAGE */}
         {page==="mydoubts"&&(
           <div className="page-anim">
-            <div style={{marginBottom:24}}><h2 style={{fontSize:22,fontWeight:800,color:textColor,margin:0}}>My Doubts</h2><p style={{color:subColor,marginTop:4,fontSize:13}}>Track your doubt sessions and queue position</p></div>
+            <div style={{marginBottom:24}}><h2 style={{fontSize:22,fontWeight:800,color:textColor,margin:0}}>My Doubts</h2><p style={{color:subColor,marginTop:4,fontSize:13}}>Track your active queue separately from your scheduled bookings</p></div>
             {myDoubts.length===0?(
               <div style={{background:cardBg,borderRadius:16,padding:48,textAlign:"center",color:subColor,border:`1px solid ${borderColor}`}}>
                 <div style={{fontSize:40,marginBottom:12}}>📭</div>
@@ -454,27 +515,68 @@ export default function StudentDashboard({ user, setUser, darkMode, setDarkMode 
                 <button onClick={()=>setPage("home")} className="btn-purple" style={{marginTop:16,padding:"10px 24px",fontSize:13}}>Go to Dashboard</button>
               </div>
             ):(
-              <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                {myDoubts.map((d,i)=>(
-                  <div key={i} style={{background:cardBg,borderRadius:14,padding:18,border:`1px solid ${borderColor}`,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                      <div style={{flex:1}}>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
-                          <span style={{fontWeight:700,fontSize:15,color:textColor}}>{d.topic}</span>
-                          {d.grouped&&<span style={{fontSize:10,padding:"2px 8px",background:PURPLE_LIGHT,color:PURPLE,borderRadius:10,fontWeight:700}}>🤝 GROUPED</span>}
-                        </div>
-                        <div style={{fontSize:12,color:subColor}}>{d.subject} · {d.created_at?.slice(0,10)}</div>
-                        {d.faculty_name&&(<div style={{fontSize:12,color:PURPLE,fontWeight:600,marginTop:4}}>👨‍🏫 {d.faculty_name}{d.faculty_cabin?` · Cabin ${d.faculty_cabin}`:""}</div>)}
-                        <div style={{fontSize:12,color:subColor,marginTop:4}}>{d.description?.slice(0,70)}…</div>
-                        {d.status==="rejected"&&d.reject_reason&&(<div style={{marginTop:10,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:4}}>❌ Rejection Reason</div><div style={{fontSize:13,color:"#991b1b"}}>{d.reject_reason}</div></div>)}
-                        {d.faculty_message&&d.status!=="rejected"&&(<div style={{marginTop:10,background:PURPLE_LIGHT,border:"1px solid #ddd6fe",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,fontWeight:700,color:PURPLE,marginBottom:4}}>💬 Faculty Message</div><div style={{fontSize:13,color:PURPLE_DARK}}>{d.faculty_message}</div></div>)}
-                        {d.status==="pending"&&<AIHint topic={d.topic}/>}
-                        {d.status==="rejected"&&(<button onClick={()=>setResubmitDoubt(d)} style={{marginTop:12,padding:"8px 16px",background:PURPLE_LIGHT,color:PURPLE,border:"1.5px solid #ddd6fe",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:12}}>🔄 Re-submit to Another Faculty</button>)}
-                      </div>
-                      <StatusBadge status={d.status}/>
-                    </div>
+              <div style={{display:"flex",flexDirection:"column",gap:20}}>
+                <div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                    <div style={{fontWeight:700,fontSize:14,color:textColor}}>Active Queue</div>
+                    <div style={{fontSize:11,color:subColor}}>{myDoubts.filter(d=>d.status!=="scheduled").length} items</div>
                   </div>
-                ))}
+                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                    {myDoubts.filter(d=>d.status!=="scheduled").map((d,i)=>(
+                      <div key={i} style={{background:cardBg,borderRadius:14,padding:18,border:`1px solid ${borderColor}`,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                          <div style={{flex:1}}>
+                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                              <span style={{fontWeight:700,fontSize:15,color:textColor}}>{d.topic}</span>
+                              {d.grouped&&<span style={{fontSize:10,padding:"2px 8px",background:PURPLE_LIGHT,color:PURPLE,borderRadius:10,fontWeight:700}}>GROUPED</span>}
+                            </div>
+                            <div style={{fontSize:12,color:subColor}}>{d.subject} | {d.created_at?.slice(0,10)}</div>
+                            {d.faculty_name&&(<div style={{fontSize:12,color:PURPLE,fontWeight:600,marginTop:4}}>{d.faculty_name}{d.faculty_cabin?` | Cabin ${d.faculty_cabin}`:""}</div>)}
+                            <div style={{fontSize:12,color:subColor,marginTop:4}}>{d.description?.slice(0,70)}...</div>
+                            {(d.queue_position || d.estimated_wait || d.expected_free_time) && (
+                              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
+                                {d.queue_position>0&&<span style={{fontSize:11,padding:"4px 8px",background:"#eff6ff",color:"#2563eb",borderRadius:8,fontWeight:700}}>Queue #{d.queue_position}</span>}
+                                {d.estimated_wait&&<span style={{fontSize:11,padding:"4px 8px",background:"#fef3c7",color:"#b45309",borderRadius:8,fontWeight:700}}>Wait {d.estimated_wait}</span>}
+                                {d.expected_free_time&&<span style={{fontSize:11,padding:"4px 8px",background:PURPLE_LIGHT,color:PURPLE,borderRadius:8,fontWeight:700}}>Expected {d.expected_free_time}</span>}
+                              </div>
+                            )}
+                            {d.status==="rejected"&&d.reject_reason&&(<div style={{marginTop:10,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:4}}>Rejection Reason</div><div style={{fontSize:13,color:"#991b1b"}}>{d.reject_reason}</div></div>)}
+                            {d.faculty_message&&d.status!=="rejected"&&(<div style={{marginTop:10,background:PURPLE_LIGHT,border:"1px solid #ddd6fe",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,fontWeight:700,color:PURPLE,marginBottom:4}}>Faculty Message</div><div style={{fontSize:13,color:PURPLE_DARK}}>{d.faculty_message}</div></div>)}
+                            {d.status==="pending"&&<AIHint topic={d.topic}/>}
+                            {d.status==="rejected"&&(<button onClick={()=>setResubmitDoubt(d)} style={{marginTop:12,padding:"8px 16px",background:PURPLE_LIGHT,color:PURPLE,border:"1.5px solid #ddd6fe",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:12}}>Re-submit to Another Faculty</button>)}
+                          </div>
+                          <StatusBadge status={d.status}/>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                    <div style={{fontWeight:700,fontSize:14,color:textColor}}>Scheduled Doubts</div>
+                    <div style={{fontSize:11,color:subColor}}>{scheduledCount} future bookings</div>
+                  </div>
+                  {scheduledCount===0?(
+                    <div style={{background:cardBg,borderRadius:14,padding:24,textAlign:"center",color:subColor,border:`1px solid ${borderColor}`}}>No scheduled doubts yet.</div>
+                  ):(
+                    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                      {myDoubts.filter(d=>d.status==="scheduled").map((d,i)=>(
+                        <div key={`scheduled-${i}`} style={{background:cardBg,borderRadius:14,padding:18,border:`1px solid ${borderColor}`,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontWeight:700,fontSize:15,color:textColor}}>{d.topic}</div>
+                              <div style={{fontSize:12,color:subColor,marginTop:4}}>{d.subject}</div>
+                              {d.faculty_name&&<div style={{fontSize:12,color:PURPLE,fontWeight:600,marginTop:4}}>{d.faculty_name}</div>}
+                              <div style={{fontSize:12,color:textColor,marginTop:10,fontWeight:600}}>{formatBookedSlot(d)}</div>
+                              {d.reminder_minutes&&<div style={{fontSize:11,color:subColor,marginTop:4}}>Reminder {d.reminder_minutes} min before the slot</div>}
+                            </div>
+                            <StatusBadge status={d.status}/>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

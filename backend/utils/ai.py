@@ -456,7 +456,7 @@ Respond ONLY with a JSON object, no markdown:
     return {"groups": groups, "ungrouped": ungrouped_ids}
 
 
-def calculate_wait_time(faculty_id: str, queue_position: int, db) -> str:
+def calculate_wait_time(faculty_id: str, queue_position: int, db, status_snapshot: dict | None = None) -> dict:
     completed = list(db.doubts.find({
         "faculty_id": faculty_id,
         "status": "completed",
@@ -475,16 +475,76 @@ def calculate_wait_time(faculty_id: str, queue_position: int, db) -> str:
     else:
         avg_duration = 15
 
-    total_wait = (queue_position - 1) * avg_duration
+    status_snapshot = status_snapshot or {}
+    status = status_snapshot.get("status", "unknown")
+    free_slots = status_snapshot.get("free_slots_today") or []
+    next_free_slot = status_snapshot.get("next_free_slot") or (free_slots[0] if free_slots else None)
 
-    if total_wait == 0:
-        return "You are next"
-    elif total_wait < 60:
-        return f"{total_wait} minutes"
-    else:
-        hours = total_wait // 60
-        mins = total_wait % 60
-        return f"{hours}h {mins}m"
+    current = __import__("datetime").datetime.now()
+
+    def parse_slot_datetime(slot):
+        if not slot:
+            return None
+        try:
+            start = str(slot.get("start", ""))
+            hour, minute = map(int, start.split(":")[:2])
+            slot_date = slot.get("date")
+            if slot_date:
+                date_obj = __import__("datetime").datetime.fromisoformat(str(slot_date)).date()
+                return __import__("datetime").datetime.combine(
+                    date_obj,
+                    __import__("datetime").time(hour=hour, minute=minute)
+                )
+            return current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        except Exception:
+            return None
+
+    def format_wait(minutes):
+        if minutes is None:
+            return "Not available"
+        if minutes <= 0:
+            return "Now"
+        if minutes < 60:
+            return f"{minutes} min"
+        hours = minutes // 60
+        mins = minutes % 60
+        return f"{hours}h {mins}m" if mins else f"{hours}h"
+
+    queue_ahead = max(0, queue_position - 1)
+    next_free_dt = parse_slot_datetime(next_free_slot)
+
+    if status in ["holiday", "left", "not_checked_in", "not_arrived"]:
+        return {
+            "estimated_wait": "Next working slot" if next_free_slot else "Not available",
+            "estimated_wait_minutes": None,
+            "average_resolution_minutes": avg_duration,
+            "expected_free_time": None,
+            "status": status,
+            "next_free_slot": next_free_slot,
+        }
+
+    status_delay = 0
+    if status in ["busy", "scheduled"]:
+        status_delay = avg_duration
+    elif status in ["in_class", "lunch"]:
+        if next_free_dt and next_free_dt > current:
+            status_delay = max(avg_duration, int((next_free_dt - current).total_seconds() // 60))
+        else:
+            status_delay = avg_duration
+
+    total_wait = max(0, status_delay + (queue_ahead * avg_duration))
+    expected_dt = current + __import__("datetime").timedelta(minutes=total_wait)
+    expected_free_time = expected_dt.strftime("%I:%M %p").lstrip("0") if total_wait >= 0 else None
+    estimated_wait = format_wait(total_wait)
+
+    return {
+        "estimated_wait": estimated_wait,
+        "estimated_wait_minutes": total_wait,
+        "average_resolution_minutes": avg_duration,
+        "expected_free_time": expected_free_time,
+        "status": status,
+        "next_free_slot": next_free_slot,
+    }
 
 
 # ─── Smart Faculty Recommendation ──────────────────────────────────────

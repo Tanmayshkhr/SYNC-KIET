@@ -10,6 +10,25 @@ const AMBER = "#f59e0b";
 const RED = "#ef4444";
 const BLUE = "#2563eb";
 const COLORS = [PURPLE, BLUE, GREEN, AMBER, RED, "#f97316", "#06b6d4", "#ec4899"];
+const TIMETABLE_PERIODS = [
+  { start: "09:10", end: "10:00", label: "Period 1 (09:10 - 10:00)" },
+  { start: "10:00", end: "10:50", label: "Period 2 (10:00 - 10:50)" },
+  { start: "10:50", end: "11:40", label: "Period 3 (10:50 - 11:40)" },
+  { start: "11:40", end: "12:30", label: "Period 4 (11:40 - 12:30)" },
+  { start: "13:30", end: "14:20", label: "Period 5 (13:30 - 14:20)" },
+  { start: "14:20", end: "15:10", label: "Period 6 (14:20 - 15:10)" },
+  { start: "15:10", end: "16:00", label: "Period 7 (15:10 - 16:00)" },
+  { start: "16:00", end: "16:50", label: "Period 8 (16:00 - 16:50)" },
+];
+const defaultTimetableSlot = () => ({
+  day: "Monday",
+  start: TIMETABLE_PERIODS[0].start,
+  end: TIMETABLE_PERIODS[0].end,
+  subject: "",
+  section: "",
+  room: "",
+  class_type: "Lecture"
+});
 
 // ── Theme ──────────────────────────────────────────────────────────────
 const T = (dark) => ({
@@ -421,7 +440,7 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
   const [ttSuccess, setTtSuccess] = useState("");
   const [excelFile, setExcelFile] = useState(null);
   const [excelLoading, setExcelLoading] = useState(false);
-  const [newSlot, setNewSlot] = useState({ day: "Monday", start: "09:00", end: "10:00", subject: "", section: "", room: "", class_type: "Lecture" });
+  const [newSlot, setNewSlot] = useState(defaultTimetableSlot());
 
   // Modals
   const [groupedModal, setGroupedModal] = useState(false);
@@ -449,14 +468,15 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
   };
 
   const handleSaveTimetable = async () => {
-    if (!selectedFacultyCode) return addToast("Select a faculty!", "warning");
+    const facultyCode = selectedFacultyCode.trim();
+    if (!facultyCode) return addToast("Select a faculty!", "warning");
     if (timetableSlots.length === 0) return addToast("Add at least one slot!", "warning");
     setTtLoading(true);
     try {
       const r = await fetch(`${API}/timetable/upload`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ faculty_code: selectedFacultyCode, slots: timetableSlots })
+        body: JSON.stringify({ faculty_code: facultyCode, slots: timetableSlots })
       });
       const d = await r.json();
       if (r.ok) { addToast(d.message, "success"); setTtSuccess(d.message); fetchTimetables(); setTimetableSlots([]); setSelectedFacultyCode(""); }
@@ -497,7 +517,7 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
   const addSlot = () => {
     if (!newSlot.subject) return addToast("Enter subject!", "warning");
     setTimetableSlots(prev => [...prev, { ...newSlot, type: "class" }]);
-    setNewSlot({ day: "Monday", start: "09:00", end: "10:00", subject: "", section: "", room: "", class_type: "Lecture" });
+    setNewSlot(defaultTimetableSlot());
   };
 
   const handleResetPassword = async () => {
@@ -973,14 +993,15 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
                 {/* Excel Upload */}
                 <div style={{background:theme.card,borderRadius:16,padding:24,border:`1px solid ${theme.border}`}}>
                   <div style={{fontWeight:700,color:theme.text,fontSize:15,marginBottom:4}}>📊 Bulk Upload via Excel</div>
-                  <div style={{fontSize:12,color:theme.muted,marginBottom:16}}>Upload Excel with columns: faculty_code | day | start | end | subject | section | room | class_type</div>
+                  <div style={{fontSize:12,color:theme.muted,marginBottom:16}}>Upload Excel with columns: faculty_code | day | period | subject | section | room | class_type or use start | end with the exact slot timings below.</div>
                   <div style={{background:theme.surface,borderRadius:10,padding:12,marginBottom:14,border:`1px solid ${theme.border}`,fontSize:11,color:theme.muted}}>
                     <div style={{fontWeight:700,color:theme.text,marginBottom:6}}>📋 Excel Format:</div>
-                    <div style={{fontFamily:"monospace",fontSize:11}}>faculty_code | day | start | end | subject | section | room | class_type</div>
-                    <div style={{fontFamily:"monospace",fontSize:11,color:PURPLE}}>dp101 | Monday | 09:00 | 10:00 | ANN & ML | CS-A | 201 | Lecture</div>
-                    <div style={{fontFamily:"monospace",fontSize:11,color:PURPLE}}>dp101 | Tuesday | 10:00 | 11:00 | ANN & ML | CS-B | 202 | Lecture</div>
+                    <div style={{fontFamily:"monospace",fontSize:11}}>faculty_code | day | period | subject | section | room | class_type</div>
+                    <div style={{fontFamily:"monospace",fontSize:11,color:PURPLE}}>DP | Monday | 1 | ANN & ML | CS-A | 201 | theory</div>
+                    <div style={{fontFamily:"monospace",fontSize:11,color:PURPLE}}>DP | Tuesday | 2 | ANN & ML | CS-B | 202 | lab</div>
+                    <div style={{fontSize:11,marginTop:8}}>Allowed timings: 09:10-10:00, 10:00-10:50, 10:50-11:40, 11:40-12:30, 14:20-15:10, 15:10-16:00, 16:00-16:50</div>
                   </div>
-                  <input type="file" accept=".xlsx,.xls" onChange={e=>setExcelFile(e.target.files[0])}
+                  <input type="file" accept=".xlsx,.xlsm,.xltx,.xltm" onChange={e=>setExcelFile(e.target.files[0])}
                     style={{width:"100%",padding:"10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:13,marginBottom:12,background:theme.card,color:theme.text,cursor:"pointer"}}/>
                   {excelFile && <div style={{fontSize:12,color:PURPLE,marginBottom:12,fontWeight:600}}>📎 {excelFile.name}</div>}
                   <button className="btn btn-primary" onClick={handleExcelUpload} disabled={excelLoading||!excelFile}
@@ -1006,10 +1027,18 @@ export default function AdminDashboard({ user, setUser, darkMode, setDarkMode })
                       style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text}}>
                       {["Lecture","Lab","Tutorial"].map(t=><option key={t}>{t}</option>)}
                     </select>
-                    <input value={newSlot.start} onChange={e=>setNewSlot({...newSlot,start:e.target.value})} type="time"
-                      style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text}}/>
-                    <input value={newSlot.end} onChange={e=>setNewSlot({...newSlot,end:e.target.value})} type="time"
-                      style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text}}/>
+                    <select
+                      value={`${newSlot.start}|${newSlot.end}`}
+                      onChange={e => {
+                        const [start, end] = e.target.value.split("|");
+                        setNewSlot({...newSlot,start,end});
+                      }}
+                      style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text,gridColumn:"span 2"}}
+                    >
+                      {TIMETABLE_PERIODS.map(slot => (
+                        <option key={slot.label} value={`${slot.start}|${slot.end}`}>{slot.label}</option>
+                      ))}
+                    </select>
                     <input value={newSlot.subject} onChange={e=>setNewSlot({...newSlot,subject:e.target.value})} placeholder="Subject"
                       style={{padding:"8px",borderRadius:8,border:`1px solid ${theme.border}`,fontSize:12,background:theme.card,color:theme.text}}/>
                     <input value={newSlot.section} onChange={e=>setNewSlot({...newSlot,section:e.target.value})} placeholder="Section (e.g. CS-A)"

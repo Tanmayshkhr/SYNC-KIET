@@ -11,6 +11,17 @@ const RED = "#ef4444";
 const AMBER = "#f59e0b";
 const BLUE = "#3b82f6";
 const PINK = "#ec4899";
+const TIMETABLE_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const TIMETABLE_PERIODS = [
+  { period: 1, start: "09:10", end: "10:00", label: "Period 1 (09:10 - 10:00)" },
+  { period: 2, start: "10:00", end: "10:50", label: "Period 2 (10:00 - 10:50)" },
+  { period: 3, start: "10:50", end: "11:40", label: "Period 3 (10:50 - 11:40)" },
+  { period: 4, start: "11:40", end: "12:30", label: "Period 4 (11:40 - 12:30)" },
+  { period: 5, start: "13:30", end: "14:20", label: "Period 5 (13:30 - 14:20)" },
+  { period: 6, start: "14:20", end: "15:10", label: "Period 6 (14:20 - 15:10)" },
+  { period: 7, start: "15:10", end: "16:00", label: "Period 7 (15:10 - 16:00)" },
+  { period: 8, start: "16:00", end: "16:50", label: "Period 8 (16:00 - 16:50)" },
+];
 
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -45,6 +56,39 @@ const theme = (dark) => ({
   navText:     dark ? "#8b8fb8" : "#6b7280",
   shadow:      dark ? "0 4px 24px rgba(0,0,0,0.4)" : "0 4px 24px rgba(99,102,241,0.1)",
 });
+
+const createEmptyEditableSlot = () => ({
+  period: TIMETABLE_PERIODS[0].period,
+  subject: "",
+  section: "",
+  room: "",
+  class_type: "theory",
+});
+
+const normalizeScheduleResponse = (data = {}) => ({
+  day: data.day || "",
+  slots: data.slots || [],
+  weekly: data.weekly || {},
+});
+
+const buildEditableWeekFromSchedule = (schedule) => {
+  const next = Object.fromEntries(TIMETABLE_DAYS.map(day => [day, []]));
+  const weekly = schedule?.weekly || {};
+  TIMETABLE_DAYS.forEach(day => {
+    next[day] = (weekly[day] || [])
+      .filter(slot => slot.type === "class")
+      .map(slot => ({
+        day,
+        period: Number(slot.period),
+        subject: slot.subject || "",
+        section: slot.section || "",
+        room: slot.room || "",
+        class_type: slot.class_type || "theory",
+      }))
+      .sort((a, b) => a.period - b.period);
+  });
+  return next;
+};
 
 // ── Live Clock ─────────────────────────────────────────────────────────
 const LiveClock = ({ dark }) => {
@@ -83,8 +127,12 @@ const StatusDot = ({ status }) => {
 // ── Weekly Timetable Grid ──────────────────────────────────────────────
 const WeeklyTimetable = ({ schedule, dark }) => {
   const T = theme(dark);
-  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-  const hours = ["09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"];
+  const days = TIMETABLE_DAYS;
+  const rows = [
+    ...TIMETABLE_PERIODS.slice(0, 4).map(slot => ({ label: slot.start, key: slot.start, break: false })),
+    { label: "12:30-13:30", key: "break", break: true },
+    ...TIMETABLE_PERIODS.slice(4).map(slot => ({ label: slot.start, key: slot.start, break: false })),
+  ];
   
   const todayName = schedule.day || "";
 
@@ -142,21 +190,28 @@ const WeeklyTimetable = ({ schedule, dark }) => {
           })}
         </div>
         {/* Time rows */}
-        {hours.map(hour => (
-          <div key={hour} style={{ display: "grid", gridTemplateColumns: "60px repeat(5,1fr)", gap: 4, marginBottom: 4, minHeight: 52 }}>
-            <div style={{ fontSize: 10, color: T.muted, paddingTop: 6, textAlign: "right", paddingRight: 8 }}>{hour}</div>
+        {rows.map(row => (
+          <div key={row.key} style={{ display: "grid", gridTemplateColumns: "60px repeat(5,1fr)", gap: 4, marginBottom: 4, minHeight: 52 }}>
+            <div style={{ fontSize: 10, color: T.muted, paddingTop: 6, textAlign: "right", paddingRight: 8 }}>{row.label}</div>
             {days.map(day => {
-              const slot = slotMap[`${day}-${hour}`];
+              if (row.break) {
+                return (
+                  <div key={day} style={{ background: dark ? "#2d1f00" : "#fef9c3", borderRadius: 8, padding: "6px 8px", border: `1px solid ${AMBER}44`, textAlign: "center" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: AMBER }}>Break</div>
+                  </div>
+                );
+              }
+              const slot = slotMap[`${day}-${row.key}`];
               if (slot && slot.type === "class") {
                 const c = getColor(slot.subject);
                 return (
                   <div key={day} className="timetable-slot" style={{ background: c.bg, borderRadius: 8, padding: "6px 8px", cursor: "default", border: `1px solid ${c.border}` }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: c.text, lineHeight: 1.2 }}>{slot.subject?.slice(0,18)}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: c.text, lineHeight: 1.25, whiteSpace: "normal", overflowWrap: "anywhere" }}>{slot.subject}</div>
                     {slot.section && <div style={{ fontSize: 9, color: `${c.text}cc`, marginTop: 2 }}>{slot.section}</div>}
                   </div>
                 );
               }
-              if (hour === "13:00") {
+              if (false) {
                 return (
                   <div key={day} style={{ background: dark ? "#2d1f00" : "#fef9c3", borderRadius: 8, padding: "6px 8px", border: `1px solid ${AMBER}44`, textAlign: "center" }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: AMBER }}>🍽 Lunch</div>
@@ -172,7 +227,7 @@ const WeeklyTimetable = ({ schedule, dark }) => {
           {Object.entries(subjectColors).map(([subj, c]) => (
             <div key={subj} style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <div style={{ width: 10, height: 10, borderRadius: 3, background: c.bg }} />
-              <span style={{ fontSize: 10, color: T.muted }}>{subj?.slice(0, 20)}</span>
+              <span style={{ fontSize: 10, color: T.muted }}>{subj}</span>
             </div>
           ))}
         </div>
@@ -211,6 +266,28 @@ const TodayQueue = ({ queue, history, dark }) => {
 };
 
 // ── Main Component ─────────────────────────────────────────────────────
+const formatScheduledSlot = (doubt) => {
+  if (!doubt?.scheduled_day || !doubt?.scheduled_start || !doubt?.scheduled_end) {
+    return "Scheduled slot unavailable";
+  }
+  return `${doubt.scheduled_day} | ${doubt.scheduled_start} - ${doubt.scheduled_end}`;
+};
+
+const formatPeakHours = (peakHours = []) => {
+  if (!peakHours.length) return "Not enough history";
+  return peakHours.map(slot => slot.label).join(", ");
+};
+
+const buildTodaySlotsWithLunch = (slots = []) => {
+  const morning = slots.slice(0, 4);
+  const afternoon = slots.slice(4);
+  return [
+    ...morning,
+    { type: "break", start: "12:30", end: "13:30", label: "Lunch" },
+    ...afternoon,
+  ];
+};
+
 export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode }) {
   const { toasts, addToast } = useToast();
   const T = theme(darkMode);
@@ -219,6 +296,7 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
   const [activeSession, setActiveSession] = useState(null);
   const [timer, setTimer] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [scheduledDoubts, setScheduledDoubts] = useState([]);
   const [page, setPage] = useState("dashboard");
   const [messagePopup, setMessagePopup] = useState(null);
   const [customMessage, setCustomMessage] = useState("");
@@ -229,18 +307,30 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
   const [rejectReason, setRejectReason] = useState("");
   const [history, setHistory] = useState([]);
   const [historyStats, setHistoryStats] = useState({ total_completed: 0, total_rejected: 0, total_group_sessions: 0 });
+  const [dashboardStats, setDashboardStats] = useState({ average_resolution_time: "15 min", average_resolution_minutes: 15, completed_today: 0, peak_hours: [] });
   const [schedule, setSchedule] = useState({ day: "", slots: [] });
+  const [editableWeek, setEditableWeek] = useState(() => buildEditableWeekFromSchedule({ weekly: {} }));
+  const [editorDay, setEditorDay] = useState("Monday");
+  const [editorSlot, setEditorSlot] = useState(createEmptyEditableSlot());
+  const [savingTimetable, setSavingTimetable] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
   const [notifDismissed, setNotifDismissed] = useState(localStorage.getItem("notifDismissed") === "true");
   const [faceStatus, setFaceStatus] = useState({ face_registered: false, manual_status: null });
   const [faceScanner, setFaceScanner] = useState(null);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const wsRef = useRef(null);
+  const queueRef = useRef([]);
+  const scheduledRef = useRef([]);
 
   const authH = { authorization: `Bearer ${user.token}` };
   const fmt = s => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   const logout = () => { localStorage.clear(); setUser(null); };
   const sendNotif = (t, b) => { if ("Notification" in window && Notification.permission === "granted") new Notification(t, { body: b }); };
+
+  useEffect(() => {
+    queueRef.current = queue;
+    scheduledRef.current = scheduledDoubts;
+  }, [queue, scheduledDoubts]);
 
   useEffect(() => {
     fetchQueue(); fetchHistory(); fetchSchedule(); fetchAnnouncements(); fetchFaceStatus();
@@ -252,7 +342,14 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
       ws.onerror = e => { ws.close(); };
     };
     connectWS();
-    return () => { if (wsRef.current) wsRef.current.close(); };
+    const refreshTimer = setInterval(() => {
+      fetchQueue();
+      fetchSchedule();
+    }, 60000);
+    return () => {
+      clearInterval(refreshTimer);
+      if (wsRef.current) wsRef.current.close();
+    };
   }, []);
 
   useEffect(() => {
@@ -263,19 +360,121 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
     return () => clearInterval(t);
   }, [activeSession]);
 
+  useEffect(() => {
+    setEditableWeek(buildEditableWeekFromSchedule(schedule));
+    if (schedule.day && TIMETABLE_DAYS.includes(schedule.day)) {
+      setEditorDay(schedule.day);
+    }
+  }, [schedule]);
+
   const fetchAnnouncements = async () => { try { const r = await fetch(`${API}/admin/announcements`); const d = await r.json(); setAnnouncements(d.announcements || []); } catch {} };
   const fetchFaceStatus = async () => { try { const r = await fetch(`${API}/face/status`, { headers: authH }); const d = await r.json(); setFaceStatus(d); } catch {} };
   const fetchQueue = async () => {
     try {
       const r = await fetch(`${API}/doubts/faculty-queue`, { headers: authH });
-      const d = await r.json(); const nq = d.queue || [];
-      if (nq.length > queue.length && nq.length > 0) sendNotif("New Doubt", `${nq[nq.length - 1].student_name} - ${nq[nq.length - 1].topic}`);
+      const d = await r.json(); const nq = d.queue || []; const ns = d.scheduled || [];
+      if (nq.length > queueRef.current.length && nq.length > 0) sendNotif("New Doubt", `${nq[nq.length - 1].student_name} - ${nq[nq.length - 1].topic}`);
+      if (ns.length > scheduledRef.current.length && ns.length > 0) sendNotif("Scheduled Doubt", `${ns[ns.length - 1].student_name} booked ${ns[ns.length - 1].scheduled_day} at ${ns[ns.length - 1].scheduled_start}`);
       setQueue(nq);
+      setScheduledDoubts(ns);
+      setDashboardStats(d.stats || { average_resolution_time: "15 min", average_resolution_minutes: 15, completed_today: 0, peak_hours: [] });
     } catch {}
     setLoading(false);
   };
   const fetchHistory = async () => { try { const r = await fetch(`${API}/doubts/faculty-history`, { headers: authH }); const d = await r.json(); setHistory(d.history || []); setHistoryStats({ total_completed: d.total_completed || 0, total_rejected: d.total_rejected || 0, total_group_sessions: d.total_group_sessions || 0 }); } catch {} };
-  const fetchSchedule = async () => { try { const r = await fetch(`${API}/timetable/my-schedule`, { headers: authH }); const d = await r.json(); setSchedule({ day: d.day || "", slots: d.slots || [], weekly: d.weekly || {} }); } catch {} };
+  const fetchSchedule = async () => { try { const r = await fetch(`${API}/timetable/my-schedule`, { headers: authH }); const d = await r.json(); setSchedule(normalizeScheduleResponse(d)); } catch {} };
+
+  useEffect(() => {
+    if (page !== "dashboard" && page !== "timetable") return;
+
+    fetchSchedule();
+  }, [page]);
+
+  useEffect(() => {
+    const handleWindowFocus = () => {
+      if (page === "dashboard" || page === "timetable") {
+        fetchSchedule();
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleWindowFocus);
+
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleWindowFocus);
+    };
+  }, [page]);
+
+  const addOrUpdateTimetableSlot = () => {
+    if (!editorSlot.subject.trim()) {
+      addToast("Enter the subject for this slot", "warning");
+      return;
+    }
+
+    setEditableWeek(prev => {
+      const existing = prev[editorDay] || [];
+      const nextDay = [
+        ...existing.filter(slot => slot.period !== editorSlot.period),
+        {
+          day: editorDay,
+          period: editorSlot.period,
+          subject: editorSlot.subject.trim(),
+          section: editorSlot.section.trim(),
+          room: editorSlot.room.trim(),
+          class_type: editorSlot.class_type,
+        }
+      ].sort((a, b) => a.period - b.period);
+
+      return { ...prev, [editorDay]: nextDay };
+    });
+
+    setEditorSlot(createEmptyEditableSlot());
+  };
+
+  const removeTimetableSlot = (day, period) => {
+    setEditableWeek(prev => ({
+      ...prev,
+      [day]: (prev[day] || []).filter(slot => slot.period !== period)
+    }));
+  };
+
+  const saveTimetable = async () => {
+    const slots = TIMETABLE_DAYS.flatMap(day =>
+      (editableWeek[day] || []).map(slot => ({
+        day,
+        period: slot.period,
+        subject: slot.subject,
+        section: slot.section,
+        room: slot.room,
+        class_type: slot.class_type,
+      }))
+    );
+
+    if (slots.length === 0) {
+      addToast("Add at least one class slot before saving", "warning");
+      return;
+    }
+
+    setSavingTimetable(true);
+    try {
+      const r = await fetch(`${API}/timetable/faculty-upload`, {
+        method: "POST",
+        headers: { ...authH, "Content-Type": "application/json" },
+        body: JSON.stringify({ slots }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        addToast(d.detail || "Failed to save timetable", "error");
+      } else {
+        addToast(d.message || "Timetable saved", "success");
+        await fetchSchedule();
+      }
+    } catch {
+      addToast("Failed to save timetable", "error");
+    }
+    setSavingTimetable(false);
+  };
 
   const acceptDoubt = async (doubt, groupDoubts = null) => {
     try {
@@ -461,18 +660,29 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
 
               {/* Stat cards */}
               {[
-                { label: "Queue", value: queue.length, color: AMBER, icon: "👥", bg: darkMode ? "#1f1500" : "#fef9c3", action: () => document.getElementById("queue-section")?.scrollIntoView({ behavior: "smooth" }) },
-                { label: "Session", value: activeSession ? "Active" : "Idle", color: activeSession ? RED : GREEN, icon: activeSession ? "🔴" : "🟢", bg: darkMode ? activeSession ? "#1a0505" : "#052e16" : activeSession ? "#fef2f2" : "#f0fdf4", action: () => document.getElementById("session-section")?.scrollIntoView({ behavior: "smooth" }) },
-                { label: "Timer", value: activeSession ? fmt(timer) : "--:--", color: timer > 1500 ? RED : ACCENT, icon: "⏱️", bg: darkMode ? "#1e1b4b" : "#ede9fe", action: null },
-                { label: "Resolved", value: historyStats.total_completed, color: GREEN, icon: "✅", bg: darkMode ? "#052e16" : "#f0fdf4", action: () => setPage("history") },
+                { label: "Active Queue", value: queue.length, color: AMBER, icon: "??", bg: darkMode ? "#1f1500" : "#fef9c3", action: () => document.getElementById("queue-section")?.scrollIntoView({ behavior: "smooth" }) },
+                { label: "Scheduled", value: scheduledDoubts.length, color: PURPLE, icon: "??", bg: darkMode ? "#1e1b4b" : "#ede9fe", action: () => document.getElementById("scheduled-section")?.scrollIntoView({ behavior: "smooth" }) },
+                { label: "Avg Resolution", value: dashboardStats.average_resolution_time || "--", color: BLUE, icon: "??", bg: darkMode ? "#0c1a3a" : "#dbeafe", action: null },
+                { label: "Completed Today", value: dashboardStats.completed_today || 0, color: GREEN, icon: "?", bg: darkMode ? "#052e16" : "#f0fdf4", action: () => setPage("history") },
               ].map((s, i) => (
                 <div key={i} className="clickable-header" onClick={s.action || undefined}
                   style={{ background: T.cardBg, borderRadius: 16, padding: 18, border: `1px solid ${T.border}`, cursor: s.action ? "pointer" : "default" }}>
                   <div style={{ width: 36, height: 36, borderRadius: 10, background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, marginBottom: 10 }}>{s.icon}</div>
-                  <div style={{ fontSize: s.label === "Timer" ? 20 : 28, fontWeight: 800, color: s.color, lineHeight: 1, marginBottom: 4, fontVariantNumeric: "tabular-nums" }}>{s.value}</div>
+                  <div style={{ fontSize: typeof s.value === "string" ? 20 : 28, fontWeight: 800, color: s.color, lineHeight: 1, marginBottom: 4, fontVariantNumeric: "tabular-nums" }}>{s.value}</div>
                   <div style={{ fontSize: 11, color: T.muted }}>{s.label}</div>
                 </div>
               ))}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
+              <div style={{ background: T.cardBg, borderRadius: 14, padding: 18, border: `1px solid ${T.border}` }}>
+                <div style={{ fontSize: 11, color: T.muted, marginBottom: 6 }}>Peak Hours</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{formatPeakHours(dashboardStats.peak_hours)}</div>
+              </div>
+              <div style={{ background: T.cardBg, borderRadius: 14, padding: 18, border: `1px solid ${T.border}` }}>
+                <div style={{ fontSize: 11, color: T.muted, marginBottom: 6 }}>Current Session State</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{activeSession ? "Active session running" : "No active session"}</div>
+              </div>
             </div>
 
             {/* Face Scan Card — CLICKABLE */}
@@ -507,7 +717,7 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
             {/* Main 2-col: Active Session + Queue */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 }}>
               {/* Active Session */}
-              <div id="session-section" style={{ background: T.cardBg, borderRadius: 16, padding: 24, border: `1px solid ${T.border}` }}>
+              <div id="session-section" style={{ background: T.cardBg, borderRadius: 16, padding: 24, border: `1px solid ${T.border}`, gridRow: "1 / 3" }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
                   Active Session
                   {activeSession && <span style={{ width: 8, height: 8, borderRadius: "50%", background: RED, display: "inline-block", animation: "pulse 1s infinite" }} />}
@@ -546,7 +756,7 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
               <div id="queue-section" style={{ background: T.cardBg, borderRadius: 16, padding: 24, border: `1px solid ${T.border}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: T.text }}>
-                    Queue <span style={{ fontSize: 12, color: T.muted }}>({queue.length})</span>
+                    Active Queue <span style={{ fontSize: 12, color: T.muted }}>({queue.length})</span>
                   </div>
                   {queue.length >= 2 && !activeSession && (
                     <button onClick={findSimilar} disabled={groupLoading} className="btn-primary" style={{ padding: "6px 12px", fontSize: 11, opacity: groupLoading ? 0.6 : 1 }}>
@@ -611,6 +821,41 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
                         </>
                       );
                     })()}
+                  </div>
+                )}
+              </div>
+
+              <div id="scheduled-section" style={{ background: T.cardBg, borderRadius: 16, padding: 24, border: `1px solid ${T.border}`, gridColumn: "2 / 3" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: T.text }}>
+                    Scheduled Doubts <span style={{ fontSize: 12, color: T.muted }}>({scheduledDoubts.length})</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: T.muted }}>Future bookings only</div>
+                </div>
+                {loading ? (
+                  <div style={{ textAlign: "center", padding: 24, color: T.muted }}>Loading...</div>
+                ) : scheduledDoubts.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "28px 20px", color: T.muted }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>ðŸ“…</div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>No future scheduled doubts</div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 280, overflowY: "auto" }}>
+                    {scheduledDoubts.map((d) => (
+                      <div key={d._id} className="queue-card" style={{ background: T.surface, borderRadius: 12, padding: 14, border: `1px solid ${T.border}` }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                          <div>
+                            <div style={{ fontWeight: 700, color: T.text, fontSize: 13 }}>{d.student_name}</div>
+                            <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{d.topic}</div>
+                            <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>{d.subject}</div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: PURPLE }}>Scheduled</div>
+                            <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>{formatScheduledSlot(d)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -688,21 +933,87 @@ export default function FacultyDashboard({ user, setUser, darkMode, setDarkMode 
               <WeeklyTimetable schedule={schedule} dark={darkMode} />
             </div>
 
+            <div style={{ background: T.cardBg, borderRadius: 16, padding: 24, border: `1px solid ${T.border}`, marginTop: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: T.text }}>Edit Weekly Timetable</div>
+                  <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>Changes here save to the same timetable used across faculty status and admin views.</div>
+                </div>
+                <button onClick={saveTimetable} className="btn-primary" disabled={savingTimetable} style={{ padding: "10px 16px", opacity: savingTimetable ? 0.6 : 1 }}>
+                  {savingTimetable ? "Saving..." : "Save Weekly Timetable"}
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 16 }}>
+                <div style={{ background: T.surface, borderRadius: 12, padding: 16, border: `1px solid ${T.border}` }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                    <select value={editorDay} onChange={e => setEditorDay(e.target.value)} style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.cardBg, color: T.text }}>
+                      {TIMETABLE_DAYS.map(day => <option key={day} value={day}>{day}</option>)}
+                    </select>
+                    <select
+                      value={editorSlot.period}
+                      onChange={e => setEditorSlot({ ...editorSlot, period: Number(e.target.value) })}
+                      style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.cardBg, color: T.text }}
+                    >
+                      {TIMETABLE_PERIODS.map(slot => <option key={slot.period} value={slot.period}>{slot.label}</option>)}
+                    </select>
+                    <input value={editorSlot.subject} onChange={e => setEditorSlot({ ...editorSlot, subject: e.target.value })} placeholder="Subject" style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.cardBg, color: T.text }} />
+                    <input value={editorSlot.section} onChange={e => setEditorSlot({ ...editorSlot, section: e.target.value })} placeholder="Section" style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.cardBg, color: T.text }} />
+                    <input value={editorSlot.room} onChange={e => setEditorSlot({ ...editorSlot, room: e.target.value })} placeholder="Room" style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.cardBg, color: T.text }} />
+                    <select value={editorSlot.class_type} onChange={e => setEditorSlot({ ...editorSlot, class_type: e.target.value })} style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.cardBg, color: T.text }}>
+                      <option value="theory">Theory</option>
+                      <option value="lab">Lab</option>
+                      <option value="tutorial">Tutorial</option>
+                    </select>
+                  </div>
+                  <button onClick={addOrUpdateTimetableSlot} className="btn-primary" style={{ width: "100%", padding: "10px 0" }}>
+                    Add Or Replace Slot
+                  </button>
+                </div>
+
+                <div style={{ background: T.surface, borderRadius: 12, padding: 16, border: `1px solid ${T.border}` }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: T.text, marginBottom: 10 }}>{editorDay} Slots</div>
+                  {(editableWeek[editorDay] || []).length === 0 ? (
+                    <div style={{ fontSize: 12, color: T.muted }}>No classes added for this day yet.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {(editableWeek[editorDay] || []).map(slot => {
+                        const periodMeta = TIMETABLE_PERIODS.find(item => item.period === slot.period);
+                        return (
+                          <div key={`${editorDay}-${slot.period}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", background: T.cardBg, borderRadius: 10, padding: "10px 12px", border: `1px solid ${T.border}` }}>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{slot.subject}</div>
+                              <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+                                {periodMeta?.label || `Period ${slot.period}`} {slot.section ? `· ${slot.section}` : ""} {slot.room ? `· Room ${slot.room}` : ""}
+                              </div>
+                            </div>
+                            <button onClick={() => removeTimetableSlot(editorDay, slot.period)} style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontWeight: 700 }}>
+                              Remove
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Today's slots list */}
             <div style={{ background: T.cardBg, borderRadius: 16, padding: 24, border: `1px solid ${T.border}`, marginTop: 20 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 16 }}>Today's Classes</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: 10 }}>
                 {schedule.slots.length === 0 ? (
                   <div style={{ color: T.muted, fontSize: 13 }}>No schedule loaded</div>
-                ) : schedule.slots.map((slot, i) => (
-                  <div key={i} style={{ background: slot.type === "class" ? `${BLUE}18` : T.surface, border: `1px solid ${slot.type === "class" ? BLUE : T.border}44`, borderRadius: 10, padding: 14, textAlign: "center" }}>
+                ) : buildTodaySlotsWithLunch(schedule.slots).map((slot, i) => (
+                  <div key={i} style={{ background: slot.type === "class" ? `${BLUE}18` : slot.type === "break" ? (darkMode ? "#2d1f00" : "#fef9c3") : T.surface, border: `1px solid ${slot.type === "class" ? BLUE : slot.type === "break" ? AMBER : T.border}44`, borderRadius: 10, padding: 14, textAlign: "center" }}>
                     <div style={{ fontSize: 11, color: T.muted, marginBottom: 5 }}>{slot.start} – {slot.end}</div>
                     {slot.type === "class" ? (
                       <>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: BLUE }}>{slot.subject}</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: BLUE, whiteSpace: "normal", overflowWrap: "anywhere" }}>{slot.subject}</div>
                         <div style={{ fontSize: 10, color: T.muted, marginTop: 3 }}>{slot.section} · {slot.class_type}</div>
                       </>
-                    ) : <div style={{ fontSize: 12, fontWeight: 700, color: GREEN }}>Free Slot</div>}
+                    ) : slot.type === "break" ? <div style={{ fontSize: 12, fontWeight: 700, color: AMBER }}>Lunch</div> : <div style={{ fontSize: 12, fontWeight: 700, color: GREEN }}>Free Slot</div>}
                   </div>
                 ))}
               </div>
